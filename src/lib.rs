@@ -66,6 +66,7 @@ mod serde_utils;
 mod endian;
 pub mod network;
 pub mod genesis;
+  pub mod conversion_utils;
 
 
 // re-export bitcoin deps which we re-use
