@@ -1,11 +1,14 @@
 //! Conversion between bitcoin and elements types
 //!
 
+use crate::confidential::Value;
+use crate::{
+    confidential, BlockHash, LockTime, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness,
+    TxOut, Txid,
+};
 use bitcoin::hashes::Hash;
 use core::fmt::{Display, Formatter};
 use std::convert::TryFrom;
-use crate::confidential::Value;
-use crate::{confidential, LockTime, OutPoint, Script, Sequence, Transaction, Txid, TxIn, TxInWitness, TxOut};
 use std::error::Error;
 
 /// Error describing issues converting between bitcoin and elements types
@@ -46,15 +49,13 @@ impl From<Script> for bitcoin::Script {
 
 impl From<bitcoin::Txid> for Txid {
     fn from(bitcoin_txid: bitcoin::Txid) -> Self {
-        Txid::from_slice(bitcoin_txid.as_ref())
-            .expect("txid")
+        Txid::from_slice(bitcoin_txid.as_ref()).expect("txid")
     }
 }
 
 impl From<Txid> for bitcoin::Txid {
     fn from(elements_txid: Txid) -> Self {
-        bitcoin::Txid::from_slice(elements_txid.as_ref())
-            .expect("txid")
+        bitcoin::Txid::from_slice(elements_txid.as_ref()).expect("txid")
     }
 }
 
@@ -76,25 +77,29 @@ impl From<OutPoint> for bitcoin::OutPoint {
     }
 }
 
+impl From<BlockHash> for bitcoin::BlockHash {
+    fn from(blockhash: BlockHash) -> Self {
+        bitcoin::BlockHash::from_slice(blockhash.as_ref()).expect("blockhash")
+    }
+}
+
 impl From<bitcoin::Transaction> for Transaction {
     fn from(bitcoin_tx: bitcoin::Transaction) -> Self {
         let tx_ins = bitcoin_tx
             .input
             .iter()
-            .map(|i| {
-                TxIn {
-                    previous_output: i.previous_output.into(),
-                    is_pegin: false,
-                    script_sig: Script::from(i.script_sig.as_bytes().to_vec()),
-                    sequence: Sequence::from_consensus(i.sequence.to_consensus_u32()),
-                    asset_issuance: Default::default(),
-                    witness: TxInWitness {
-                        amount_rangeproof: None,
-                        inflation_keys_rangeproof: None,
-                        script_witness: i.witness.to_vec(),
-                        pegin_witness: vec![],
-                    },
-                }
+            .map(|i| TxIn {
+                previous_output: i.previous_output.into(),
+                is_pegin: false,
+                script_sig: Script::from(i.script_sig.as_bytes().to_vec()),
+                sequence: Sequence::from_consensus(i.sequence.to_consensus_u32()),
+                asset_issuance: Default::default(),
+                witness: TxInWitness {
+                    amount_rangeproof: None,
+                    inflation_keys_rangeproof: None,
+                    script_witness: i.witness.to_vec(),
+                    pegin_witness: vec![],
+                },
             })
             .collect::<Vec<_>>();
 
@@ -170,16 +175,12 @@ impl TryFrom<Transaction> for bitcoin::Transaction {
     }
 }
 
-
-
-
-
 #[cfg(test)]
 mod test {
-    use std::convert::TryInto;
     use super::*;
     use bitcoin::consensus::deserialize;
     use bitcoin::hashes::hex::FromHex;
+    use std::convert::TryInto;
 
     #[test]
     fn elements_bitcoin_transaction_conversion_roundtrip() {
