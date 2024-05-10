@@ -20,6 +20,7 @@ use std::io;
 use bitcoin::hashes::{Hash, sha256};
 #[cfg(feature = "serde")] use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(feature = "serde")] use std::fmt;
+use std::io::{Error, Write};
 
 use crate::dynafed;
 use crate::Transaction;
@@ -398,6 +399,14 @@ impl Block {
         base_weight + txs_weight
     }
 }
+
+impl bitcoin::consensus::Encodable for Block {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for Block {}
 
 #[cfg(test)]
 mod tests {

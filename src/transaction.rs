@@ -18,6 +18,7 @@
 use std::{io, fmt, str};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::io::Write;
 
 use bitcoin::{self, VarInt};
 use crate::hashes::{Hash, sha256};
@@ -1015,6 +1016,12 @@ impl Encodable for Transaction {
     }
 }
 
+impl bitcoin::consensus::Encodable for Transaction {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
 impl Decodable for Transaction {
     fn consensus_decode<D: io::Read>(mut d: D) -> Result<Transaction, encode::Error> {
         let version = u32::consensus_decode(&mut d)?;
@@ -1053,6 +1060,9 @@ impl Decodable for Transaction {
         }
     }
 }
+
+impl bitcoin::consensus::Decodable for Transaction {}
+
 /// Hashtype of a transaction, encoded in the last byte of a signature
 /// Fixed values so they can be casted as integer types for encoding
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
