@@ -36,6 +36,7 @@ pub extern crate secp256k1_zkp;
 #[cfg(test)] extern crate rand;
 #[cfg(test)] extern crate bincode;
 #[cfg(any(test, feature = "serde_json"))] extern crate serde_json;
+extern crate core;
 
 #[macro_use] mod internal_macros;
 pub mod address;
@@ -63,6 +64,10 @@ pub mod schnorr;
 mod serde_utils;
 // consider making upstream public
 mod endian;
+pub mod network;
+pub mod genesis;
+
+
 // re-export bitcoin deps which we re-use
 pub use bitcoin::{bech32, hashes};
 // export everything at the top level so it can be used as `elements::Transaction` etc.
@@ -80,3 +85,4 @@ pub use crate::locktime::{LockTime, PackedLockTime};
 pub use crate::script::Script;
 pub use crate::sighash::SchnorrSigHashType;
 pub use crate::schnorr::{SchnorrSig, SchnorrSigError};
+pub use crate::network::Network;
