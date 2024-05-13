@@ -2,10 +2,7 @@
 //!
 
 use crate::confidential::Value;
-use crate::{
-    confidential, BlockHash, LockTime, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness,
-    TxOut, Txid,
-};
+use crate::{confidential, BlockHash, LockTime, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut, Txid, TxMerkleNode};
 use bitcoin::hashes::Hash;
 use core::fmt::{Display, Formatter};
 use std::convert::TryFrom;
@@ -172,6 +169,18 @@ impl TryFrom<Transaction> for bitcoin::Transaction {
             input: tx_ins,
             output: tx_outs,
         })
+    }
+}
+
+impl From<TxMerkleNode> for bitcoin::TxMerkleNode {
+    fn from(merkle_node: TxMerkleNode) -> Self {
+        bitcoin::TxMerkleNode::from_slice(merkle_node.as_ref()).expect("tx_merkle_node hash")
+    }
+}
+
+impl From<bitcoin::TxMerkleNode> for TxMerkleNode {
+    fn from(merkle_node: bitcoin::TxMerkleNode) -> Self {
+        TxMerkleNode::from_slice(merkle_node.as_ref()).expect("tx_merkle_node hash")
     }
 }
 
