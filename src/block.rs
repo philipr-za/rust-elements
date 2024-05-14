@@ -412,7 +412,12 @@ impl bitcoin::consensus::Encodable for Block {
     }
 }
 
-impl bitcoin::consensus::Decodable for Block {}
+impl bitcoin::consensus::Decodable for Block {
+    fn consensus_decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block: crate::Block = Decodable::consensus_decode(r).map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block)
+    }
+}
 
 #[cfg(test)]
 mod tests {

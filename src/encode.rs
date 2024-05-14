@@ -109,6 +109,19 @@ impl From<Error> for io::Error {
     }
 }
 
+impl From<Error> for btcenc::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Io(e) => btcenc::Error::Io(e),
+            Error::Bitcoin(e) => e,
+            Error::OversizedVectorAllocation { requested, max } => btcenc::Error::OversizedVectorAllocation { requested, max },
+            Error::ParseFailed(s) => btcenc::Error::ParseFailed(s),
+            Error::UnexpectedEOF => btcenc::Error::Io(io::Error::new(ErrorKind::UnexpectedEof, Error::UnexpectedEOF)),
+            e => btcenc::Error::Io(io::Error::new(ErrorKind::Other, e)),
+        }
+    }
+}
+
 #[doc(hidden)]
 impl From<btcenc::Error> for Error {
     fn from(e: btcenc::Error) -> Error {
