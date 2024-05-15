@@ -18,9 +18,10 @@
 use std::{io, fmt, str};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::io::Write;
+use std::io::{Read, Write};
 
 use bitcoin::{self, VarInt};
+use bitcoin::consensus::encode::MAX_VEC_SIZE;
 use crate::hashes::{Hash, sha256};
 
 use crate::{confidential, ContractHash};
@@ -1061,7 +1062,19 @@ impl Decodable for Transaction {
     }
 }
 
-impl bitcoin::consensus::Decodable for Transaction {}
+impl bitcoin::consensus::Decodable for Transaction {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx: Transaction = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx: Transaction = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx)
+    }
+}
 
 /// Hashtype of a transaction, encoded in the last byte of a signature
 /// Fixed values so they can be casted as integer types for encoding
