@@ -80,6 +80,12 @@ impl From<BlockHash> for bitcoin::BlockHash {
     }
 }
 
+impl From<bitcoin::BlockHash> for BlockHash {
+    fn from(blockhash: bitcoin::BlockHash) -> Self {
+        BlockHash::from_slice(blockhash.as_ref()).expect("blockhash")
+    }
+}
+
 impl From<bitcoin::Transaction> for Transaction {
     fn from(bitcoin_tx: bitcoin::Transaction) -> Self {
         let tx_ins = bitcoin_tx
