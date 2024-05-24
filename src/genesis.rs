@@ -300,7 +300,7 @@ impl ChainHash {
 #[cfg(test)]
 mod test {
     use crate::genesis::{genesis_block, ChainHash, NetworkParams};
-    use crate::Network;
+    use crate::{Network, Script};
 
     #[test]
     fn genesis_block_hash() {

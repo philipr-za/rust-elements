@@ -16,6 +16,7 @@
 //!
 
 use core::fmt;
+use std::fmt::Formatter;
 use crate::error::write_err;
 
 /// The cryptocurrency network to act on.
@@ -129,6 +130,12 @@ impl Network {
     // }
 }
 
+impl fmt::Display for Network {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_core_arg())
+    }
+}
+
 /// An error in parsing network string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseNetworkError(String);
@@ -143,4 +150,3 @@ impl fmt::Display for ParseNetworkError {
 impl std::error::Error for ParseNetworkError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
 }
-
