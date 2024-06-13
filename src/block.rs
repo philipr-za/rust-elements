@@ -356,6 +356,26 @@ impl Decodable for BlockHeader {
     }
 }
 
+impl bitcoin::consensus::Encodable for BlockHeader {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for BlockHeader {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block_header: BlockHeader = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block_header)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block_header: BlockHeader = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block_header)
+    }
+}
+
 /// Elements block
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Block {
