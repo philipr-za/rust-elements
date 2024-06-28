@@ -149,6 +149,18 @@ impl fmt::UpperHex for PackedLockTime {
     }
 }
 
+impl From<PackedLockTime> for bitcoin::PackedLockTime {
+    fn from(lock_time: PackedLockTime) -> Self {
+        bitcoin::PackedLockTime(lock_time.0)
+    }
+}
+
+impl From<bitcoin::PackedLockTime> for PackedLockTime {
+    fn from(lock_time: bitcoin::PackedLockTime) -> Self {
+        PackedLockTime(lock_time.0)
+    }
+}
+
 /// A lock time value, representing either a block height or a UNIX timestamp (seconds since epoch).
 ///
 /// Used for transaction lock time (`nLockTime` in Bitcoin Core and [`crate::Transaction::lock_time`]
