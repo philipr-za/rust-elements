@@ -18,8 +18,10 @@
 use std::{io, fmt, str, cmp};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::io::{Error, Read, Write};
 
 use bitcoin::{self, VarInt};
+use bitcoin::consensus::encode::MAX_VEC_SIZE;
 use crate::hashes::{Hash, sha256};
 
 use crate::{confidential, ContractHash};
@@ -538,6 +540,25 @@ impl Decodable for TxIn {
     }
 }
 
+impl bitcoin::consensus::Encodable for TxIn {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for TxIn {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx_in: TxIn = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx_in)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx_in: TxIn = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx_in)
+    }
+}
 
 impl TxIn {
     /// Whether the input is a coinbase
@@ -686,6 +707,26 @@ impl Decodable for TxOut {
             script_pubkey: Decodable::consensus_decode(&mut d)?,
             witness: TxOutWitness::default(),
         })
+    }
+}
+
+impl bitcoin::consensus::Encodable for TxOut {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for TxOut {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx_out: TxOut = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx_out)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx_out: TxOut = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx_out)
     }
 }
 
@@ -1029,6 +1070,12 @@ impl Encodable for Transaction {
     }
 }
 
+impl bitcoin::consensus::Encodable for Transaction {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
 impl Decodable for Transaction {
     fn consensus_decode<D: io::Read>(mut d: D) -> Result<Transaction, encode::Error> {
         let version = u32::consensus_decode(&mut d)?;
@@ -1084,6 +1131,21 @@ impl cmp::Ord for Transaction {
             )
             .then(self.input.cmp(&other.input))
             .then(self.output.cmp(&other.output))
+    }
+}
+
+
+impl bitcoin::consensus::Decodable for Transaction {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx: Transaction = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let tx: Transaction = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(tx)
     }
 }
 

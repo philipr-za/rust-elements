@@ -19,6 +19,8 @@ use std::io;
 
 #[cfg(feature = "serde")] use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(feature = "serde")] use std::fmt;
+use std::io::{Error, Read, Write};
+use bitcoin::consensus::encode::MAX_VEC_SIZE;
 
 use crate::dynafed;
 use crate::hashes::{Hash, sha256};
@@ -347,6 +349,26 @@ impl Decodable for BlockHeader {
     }
 }
 
+impl bitcoin::consensus::Encodable for BlockHeader {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for BlockHeader {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block_header: BlockHeader = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block_header)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block_header: BlockHeader = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block_header)
+    }
+}
+
 /// Elements block
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Block {
@@ -389,6 +411,32 @@ impl Block {
         let base_weight = 4 * (serialize(&self.header).len() + VarInt(self.txdata.len() as u64).len());
         let txs_weight: usize = self.txdata.iter().map(Transaction::weight).sum();
         base_weight + txs_weight
+    }
+
+    /// Computes the transaction merkle root.
+    pub fn compute_merkle_root(&self) -> Option<TxMerkleNode> {
+        let hashes = self.txdata.iter().map(|obj| obj.txid().to_raw_hash());
+        bitcoin::merkle_tree::calculate_root(hashes).map(|h| h.into())
+    }
+}
+
+impl bitcoin::consensus::Encodable for Block {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for Block {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block: Block = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let block: Block = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(block)
     }
 }
 
