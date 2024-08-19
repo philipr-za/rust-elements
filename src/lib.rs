@@ -39,6 +39,7 @@ pub extern crate secp256k1_zkp;
 #[cfg(test)] extern crate rand;
 #[cfg(test)] extern crate bincode;
 #[cfg(any(test, feature = "serde_json"))] extern crate serde_json;
+extern crate core;
 
 #[macro_use] mod internal_macros;
 pub mod address;
@@ -69,6 +70,9 @@ mod serde_utils;
 mod endian;
 pub mod network;
 pub mod genesis;
+pub mod conversion_utils;
+
+
 // re-export bitcoin deps which we re-use
 pub use bitcoin::bech32;
 pub use bitcoin::hashes;

@@ -59,6 +59,12 @@ impl fmt::Display for Script {
     }
 }
 
+impl AsRef<[u8]> for Script {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl fmt::LowerHex for Script {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for &ch in self.0.iter() {
