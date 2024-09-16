@@ -20,11 +20,10 @@ use crate::genesis::ChainHash;
 use core::fmt;
 use std::convert::TryFrom;
 use std::fmt::Formatter;
-use std::io;
 use std::str::FromStr;
 
 /// The cryptocurrency network to act on.
-#[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
@@ -43,7 +42,7 @@ pub enum Network {
     /// Liquid testnet
     Liquidtestnet,
     /// Elements regtest
-    Elementsregtest,
+    Elementsregtest(String),
     /// Liquid v1 testing, as close to prod as possible while still being customizable. Uses
     /// Elementsregtest genesis block
     Liquidv1test,
@@ -60,16 +59,16 @@ impl Network {
     /// Use the chain <chain> (default: main). Allowed values: main, test, signet, regtest, liquidv1,
     /// liquidv1test, liquidtestnet, elementsregtest
     /// ```
-    pub fn to_core_arg(self) -> &'static str {
+    pub fn to_core_arg(self) -> String {
         match self {
-            Network::Bitcoin => "main",
-            Network::Testnet => "test",
-            Network::Signet => "signet",
-            Network::Regtest => "regtest",
-            Network::Liquidv1 => "liquidv1",
-            Network::Liquidtestnet => "liquidtestnet",
-            Network::Elementsregtest => "elementsregtest",
-            Network::Liquidv1test => "liquidv1test",
+            Network::Bitcoin => "main".to_string(),
+            Network::Testnet => "test".to_string(),
+            Network::Signet => "signet".to_string(),
+            Network::Regtest => "regtest".to_string(),
+            Network::Liquidv1 => "liquidv1".to_string(),
+            Network::Liquidtestnet => "liquidtestnet".to_string(),
+            Network::Elementsregtest(n) => n,
+            Network::Liquidv1test => "liquidv1test".to_string(),
         }
     }
 
@@ -83,7 +82,7 @@ impl Network {
     /// Use the chain <chain> (default: main). Allowed values: main, test, signet, regtest, liquidv1,
     /// liquidv1test, liquidtestnet, elementsregtest
     /// ```
-    pub fn from_core_arg(core_arg: &str) -> Result<Self, ParseNetworkError> {
+    pub fn from_core_arg(core_arg: &str) -> Self {
         use Network::*;
 
         let network = match core_arg {
@@ -94,10 +93,9 @@ impl Network {
             "liquidv1" => Liquidv1,
             "liquidv1test" => Liquidv1test,
             "liquidtestnet" => Liquidtestnet,
-            "elementsregtest" | "liquid-regtest" => Elementsregtest,
-            _ => return Err(ParseNetworkError(format!("unrecognized network string {}", core_arg))),
+            name => Elementsregtest(String::from(name)),
         };
-        Ok(network)
+        network
     }
 
     /// Return the network's chain hash (genesis block hash).
@@ -111,8 +109,8 @@ impl Network {
     /// let network = Network::Liquidv1;
     /// assert_eq!(network.chain_hash(), ChainHash::LIQUIDV1);
     /// ```
-    pub fn chain_hash(self) -> ChainHash {
-        ChainHash::using_genesis_block_const(self)
+    pub fn chain_hash(&self) -> ChainHash {
+        ChainHash::using_genesis_block_const(&self)
     }
 
     /// Creates a `Network` from the chain hash (genesis block hash).
@@ -133,15 +131,15 @@ impl Network {
 
 impl fmt::Display for Network {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_core_arg())
+        write!(f, "{}", self.clone().to_core_arg())
     }
 }
 
 impl FromStr for Network {
-    type Err = io::Error;
+    type Err = ();
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Network::from_core_arg(s).map_err(|_e| io::Error::from(io::ErrorKind::InvalidInput))
+    fn from_str(s: &str) -> Result<Self, ()> {
+        Ok(Network::from_core_arg(s))
     }
 }
 
@@ -161,9 +159,8 @@ impl TryFrom<ChainHash> for Network {
             Ok(Network::Liquidv1)
         } else if chain_hash == ChainHash::LIQUIDTESTNET {
             Ok(Network::Liquidtestnet)
-        } else if chain_hash == ChainHash::ELEMENTSREGTEST {
-            Ok(Network::Elementsregtest)
         } else {
+            // Elementsregtest's hash can vary depending on params and network id string
             Err(ParseNetworkError(format!(
                 "Chainhash {} not recognized",
                 chain_hash

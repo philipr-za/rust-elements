@@ -54,7 +54,7 @@ impl NetworkParams {
                 sign_block_script: Script::from_hex("51210217e403ddb181872c32a0cd468c710040b2f53d8cac69f18dad07985ee37e9a7151ae").expect("constant sign_block_script parse"),
                 initial_free_coins: 2100000000000000,
             }),
-            Network::Elementsregtest => Some(NetworkParams {
+            Network::Elementsregtest(_) => Some(NetworkParams {
                 network,
                 fedpeg_script: script::Builder::new().push_opcode(OP_TRUE).into_script(),
                 sign_block_script: script::Builder::new().push_opcode(OP_TRUE).into_script(),
@@ -96,7 +96,7 @@ impl NetworkParams {
 
 /// Hash commitment of network parameters for a given Network
 fn commit_to_network_parameters(network: Network) -> Vec<u8> {
-    let params = match NetworkParams::new(network) {
+    let params = match NetworkParams::new(network.clone()) {
         None => return vec![],
         Some(p) => p,
     };
@@ -140,7 +140,7 @@ fn liquid_genesis_tx(network: Network) -> Transaction {
 
 /// Create the confidential asset transaction for the genesis block if required by the specified Network
 fn liquid_genesis_asset_tx(network: Network) -> Option<Transaction> {
-    let commit = commit_to_network_parameters(network);
+    let commit = commit_to_network_parameters(network.clone());
     let asset_amount = match NetworkParams::new(network) {
         None => return None,
         Some(p) => p.initial_free_coins,
@@ -193,7 +193,7 @@ pub fn genesis_block(params: NetworkParams) -> Option<Block> {
     match params.network {
         Network::Bitcoin | Network::Testnet | Network::Signet | Network::Regtest => None,
         network => {
-            let tx = liquid_genesis_tx(network);
+            let tx = liquid_genesis_tx(network.clone());
             let mut txdata = vec![tx.clone()];
 
             let merkle_root: sha256d::Hash =
@@ -226,7 +226,7 @@ pub fn genesis_block(params: NetworkParams) -> Option<Block> {
 
 /// The uniquely identifying hash of the target blockchain.
 /// Liquid networks assume default consensus constants, Elements allows for modification of fedpeg and signblock scripts
-/// via configuration argument which will cause these values to differ
+/// via configuration argument which will cause these values to differ so these are only for default parameters
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ChainHash([u8; 32]);
 impl_array_newtype!(ChainHash, u8, 32);
@@ -279,18 +279,17 @@ impl ChainHash {
     ///
     /// See [BOLT 0](https://github.com/lightning/bolts/blob/ffeece3dab1c52efdb9b53ae476539320fa44938/00-introduction.md#chain_hash)
     /// for specification.
-    pub const fn using_genesis_block_const(network: Network) -> Self {
-        let hashes = [
-            Self::BITCOIN,
-            Self::TESTNET,
-            Self::SIGNET,
-            Self::REGTEST,
-            Self::LIQUIDV1,
-            Self::LIQUIDTESTNET,
-            Self::ELEMENTSREGTEST,
-            Self::LIQUIDV1TEST,
-        ];
-        hashes[network as usize]
+    pub const fn using_genesis_block_const(network: &Network) -> Self {
+        match network {
+            Network::Bitcoin => Self::BITCOIN,
+            Network::Testnet => Self::TESTNET,
+            Network::Signet => Self::SIGNET,
+            Network::Regtest => Self::REGTEST,
+            Network::Liquidv1 => Self::LIQUIDV1,
+            Network::Liquidtestnet => Self::LIQUIDTESTNET,
+            Network::Elementsregtest(_) => Self::ELEMENTSREGTEST,
+            Network::Liquidv1test => Self::LIQUIDV1TEST,
+        }
     }
 }
 
@@ -310,28 +309,28 @@ mod test {
         let genesis_block = genesis_block(NetworkParams::new(Network::Liquidv1).unwrap()).unwrap();
         assert_eq!(
             genesis_block.block_hash().as_ref(),
-            ChainHash::using_genesis_block_const(Network::Liquidv1).0
+            ChainHash::using_genesis_block_const(&Network::Liquidv1).0
         );
         let genesis_block =
             crate::genesis::genesis_block(NetworkParams::new(Network::Liquidtestnet).unwrap())
                 .unwrap();
         assert_eq!(
             genesis_block.block_hash().as_ref(),
-            ChainHash::using_genesis_block_const(Network::Liquidtestnet).0
+            ChainHash::using_genesis_block_const(&Network::Liquidtestnet).0
         );
         let genesis_block =
-            crate::genesis::genesis_block(NetworkParams::new(Network::Elementsregtest).unwrap())
+            crate::genesis::genesis_block(NetworkParams::new(Network::Elementsregtest("elementsregtest".to_string())).unwrap())
                 .unwrap();
         assert_eq!(
             genesis_block.block_hash().as_ref(),
-            ChainHash::using_genesis_block_const(Network::Elementsregtest).0
+            ChainHash::using_genesis_block_const(&Network::Elementsregtest("elementsregtest".to_string())).0
         );
         let genesis_block =
             crate::genesis::genesis_block(NetworkParams::new(Network::Liquidv1test).unwrap())
                 .unwrap();
         assert_eq!(
             genesis_block.block_hash().as_ref(),
-            ChainHash::using_genesis_block_const(Network::Liquidv1test).0
+            ChainHash::using_genesis_block_const(&Network::Liquidv1test).0
         );
 
         let custom_genesis = crate::genesis::genesis_block(
