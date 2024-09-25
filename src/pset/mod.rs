@@ -22,6 +22,8 @@
 
 use std::collections::HashMap;
 use std::{cmp, io};
+use std::io::{Read, Write};
+use bitcoin::consensus::encode::MAX_VEC_SIZE;
 
 mod error;
 #[macro_use]
@@ -752,6 +754,26 @@ impl Decodable for PartiallySignedTransaction {
 
         let pset = PartiallySignedTransaction { global, inputs, outputs };
         pset.sanity_check()?;
+        Ok(pset)
+    }
+}
+
+impl bitcoin::consensus::Encodable for PartiallySignedTransaction {
+    fn consensus_encode<W: Write + ?Sized>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        Encodable::consensus_encode(self, writer).map_err(|e| e.into())
+    }
+}
+
+impl bitcoin::consensus::Decodable for PartiallySignedTransaction {
+    fn consensus_decode<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let pset: PartiallySignedTransaction = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
+        Ok(pset)
+    }
+
+    fn consensus_decode_from_finite_reader<R: io::Read + ?Sized>(reader: &mut R) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let pset: PartiallySignedTransaction = Decodable::consensus_decode(reader.take(MAX_VEC_SIZE as u64).by_ref())
+            .map_err(|e| bitcoin::consensus::encode::Error::from(e))?;
         Ok(pset)
     }
 }
