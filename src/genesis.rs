@@ -95,21 +95,31 @@ impl NetworkParams {
 }
 
 /// Hash commitment of network parameters for a given Network
-fn commit_to_network_parameters(network: Network) -> Vec<u8> {
+pub fn commit_to_network_parameters(network: &Network) -> Vec<u8> {
     let params = match NetworkParams::new(network.clone()) {
         None => return vec![],
         Some(p) => p,
     };
     let mut eng = sha256::Hash::engine();
-    eng.input(network.to_core_arg().as_bytes());
+    eng.input(network.clone().to_core_arg().as_bytes());
     eng.input(params.fedpeg_script.to_hex().as_bytes());
     eng.input(params.sign_block_script.to_hex().as_bytes());
     sha256::Hash::from_engine(eng).serialize()
 }
 
+/// Hash commitment of network parameters for a given Network
+pub fn commit_to_custom_network_parameters(params: &NetworkParams) -> Vec<u8> {
+    let mut eng = sha256::Hash::engine();
+    eng.input(params.network.clone().to_core_arg().as_bytes());
+    eng.input(params.fedpeg_script.to_hex().as_bytes());
+    eng.input(params.sign_block_script.to_hex().as_bytes());
+    sha256::Hash::from_engine(eng).serialize()
+}
+
+
 /// Produce the genesis transaction for a given elements Network
 fn liquid_genesis_tx(network: Network) -> Transaction {
-    let commit = commit_to_network_parameters(network);
+    let commit = commit_to_network_parameters(&network);
     let input = TxIn {
         previous_output: Default::default(),
         is_pegin: false,
@@ -140,7 +150,7 @@ fn liquid_genesis_tx(network: Network) -> Transaction {
 
 /// Create the confidential asset transaction for the genesis block if required by the specified Network
 fn liquid_genesis_asset_tx(network: Network) -> Option<Transaction> {
-    let commit = commit_to_network_parameters(network.clone());
+    let commit = commit_to_network_parameters(&network);
     let asset_amount = match NetworkParams::new(network) {
         None => return None,
         Some(p) => p.initial_free_coins,

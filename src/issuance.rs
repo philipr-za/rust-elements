@@ -21,6 +21,8 @@ use crate::encode::{self, Encodable, Decodable};
 use crate::hashes::{self, hash_newtype, sha256, sha256d, Hash};
 use crate::fast_merkle_root::fast_merkle_root;
 use secp256k1_zkp::Tag;
+use crate::genesis::{commit_to_custom_network_parameters, NetworkParams};
+use crate::{Network, Txid};
 use crate::transaction::OutPoint;
 
 /// The zero hash.
@@ -145,6 +147,51 @@ impl AssetId {
     /// Convert an asset into [Tag]
     pub fn into_tag(self) -> Tag {
         self.0.to_byte_array().into()
+    }
+
+    /// Pegged asset id for given network parameters
+    pub fn pegged_asset_id_for_network_params(params: NetworkParams) -> Option<AssetId> {
+        match params.network {
+            Network::Liquidv1 => Some(Self::LIQUID_BTC),
+            Network::Liquidtestnet | Network::Liquidv1test => {
+                let asset_id = Self::pegged_asset_id_for_regtest_params(&params);
+                Some(asset_id)
+            }
+            Network::Elementsregtest(ref network_str) => {
+                // Check the two most common Regtest network strings used by CLN and Liquid and
+                // return precalculated AssetId's for them
+                if network_str == &"elementsregtest".to_string() {
+                    return Some(AssetId(sha256::Midstate([
+                        0x23, 0x0f, 0x4f, 0x5d, 0x4b, 0x7c, 0x6f, 0xa8, 0x45, 0x80, 0x6e, 0xe4,
+                        0xf6, 0x77, 0x13, 0x45, 0x9e, 0x1b, 0x69, 0xe8, 0xe6, 0x0f, 0xce, 0xe2,
+                        0xe4, 0x94, 0x0c, 0x7a, 0x0d, 0x5d, 0xe1, 0xb2,
+                    ])));
+                }
+
+                if network_str == &"liquid-regtest".to_string() {
+                    return Some(AssetId(sha256::Midstate([
+                        0x5c, 0xe7, 0xb9, 0x63, 0xd3, 0x7f, 0x8f, 0x2d, 0x51, 0xca, 0xfb, 0xba,
+                        0x92, 0x8a, 0xaa, 0x9e, 0x22, 0x0b, 0x8b, 0xbc, 0x66, 0x05, 0x71, 0x49,
+                        0x9c, 0x03, 0x62, 0x8a, 0x38, 0x51, 0xb8, 0xce,
+                    ])));
+                }
+
+                // Else calculate the asset_id
+                let asset_id = Self::pegged_asset_id_for_regtest_params(&params);
+                Some(asset_id)
+            }
+            _ => None,
+        }
+    }
+
+    /// Calculate the AssetId for the pegged asset for a given set of network parameters assuming
+    /// a Regtest parent network
+    fn pegged_asset_id_for_regtest_params(params: &NetworkParams) -> AssetId {
+        let commit = commit_to_custom_network_parameters(params);
+        let genesis_block = bitcoin::Network::Regtest.chain_hash();
+        let asset_outpoint = OutPoint::new(Txid::from_slice(commit.as_slice()).expect("txid"), 0);
+        let asset_entropy = AssetId::generate_asset_entropy(asset_outpoint, ContractHash::from_slice(genesis_block.to_bytes().as_slice()).unwrap());
+        AssetId::from_entropy(asset_entropy)
     }
 }
 
