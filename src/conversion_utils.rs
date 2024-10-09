@@ -264,7 +264,7 @@ mod test {
             55d3bcb8627d085e94553e62f057dcc00000000"
         ).unwrap();
         let btc_tx: bitcoin::Transaction = deserialize(&tx_bytes).unwrap();
-        let elements_tx: Transaction = btc_tx.clone().into();
+        let elements_tx: Transaction = btc_tx.clone().to_elements_transaction(Network::Liquidv1);
         let converted_btc_tx: bitcoin::Transaction = elements_tx.try_into().unwrap();
         assert_eq!(btc_tx, converted_btc_tx);
     }
