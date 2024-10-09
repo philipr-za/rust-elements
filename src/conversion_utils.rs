@@ -2,7 +2,11 @@
 //!
 
 use crate::confidential::Value;
-use crate::{confidential, BlockHash, LockTime, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness, TxMerkleNode, TxOut, Txid};
+use crate::genesis::NetworkParams;
+use crate::{
+    confidential, AssetId, BlockHash, LockTime, Network, OutPoint, Script, Sequence, Transaction,
+    TxIn, TxInWitness, TxMerkleNode, TxOut, Txid,
+};
 use core::fmt::{Display, Formatter};
 use std::convert::{TryFrom, TryInto};
 use std::error::Error;
@@ -85,30 +89,39 @@ impl From<bitcoin::BlockHash> for BlockHash {
     }
 }
 
-impl From<bitcoin::Transaction> for Transaction {
-    fn from(bitcoin_tx: bitcoin::Transaction) -> Self {
-        let tx_ins = bitcoin_tx
+/// Trait defining how to turn a struct into an Elements transaction
+pub trait ToElementsTransaction {
+
+    /// Convert to Elements transaction
+    fn to_elements_transaction(&self, network: Network) -> Transaction;
+}
+
+impl ToElementsTransaction for bitcoin::Transaction {
+    fn to_elements_transaction(&self, network: Network) -> Transaction {
+        let tx_ins = self
             .input
             .iter()
             .cloned()
             .map(Into::into)
             .collect::<Vec<_>>();
 
-        let tx_outs = bitcoin_tx
+        let tx_outs = self
             .output
             .iter()
             .cloned()
-            .map(Into::into)
+            .map(|out| out.to_elements_txout(network.clone()))
             .collect::<Vec<_>>();
 
         Transaction {
-            version: bitcoin_tx.version as u32,
-            lock_time: LockTime::from_consensus(bitcoin_tx.lock_time.to_consensus_u32()),
+            version: self.version as u32,
+            lock_time: LockTime::from_consensus(self.lock_time.to_consensus_u32()),
             input: tx_ins,
             output: tx_outs,
         }
     }
 }
+
+
 
 impl TryFrom<Transaction> for bitcoin::Transaction {
     type Error = TransactionConversionError;
@@ -192,18 +205,31 @@ impl TryFrom<TxOut> for bitcoin::TxOut {
         };
         Ok(bitcoin::TxOut {
             value,
-            script_pubkey: bitcoin::ScriptBuf::from(elements_txout.script_pubkey.as_bytes().to_vec()),
+            script_pubkey: bitcoin::ScriptBuf::from(
+                elements_txout.script_pubkey.as_bytes().to_vec(),
+            ),
         })
     }
 }
 
-impl From<bitcoin::TxOut> for TxOut {
-    fn from(bitcoin_txout: bitcoin::TxOut) -> Self {
+/// Trait defining how to turn a struct into an Elements transaction output
+pub trait ToElementsTxOut {
+    /// Convert to Elements transaction output
+    fn to_elements_txout(&self, network: Network) -> TxOut;
+}
+
+impl ToElementsTxOut for bitcoin::TxOut {
+    fn to_elements_txout(&self, network: Network) -> TxOut {
+        let asset_id = match NetworkParams::new(network) {
+            None => Default::default(),
+            Some(params) => AssetId::pegged_asset_id_for_network_params(params).unwrap_or_default(),
+        };
+
         TxOut {
-            asset: Default::default(),
-            value: confidential::Value::Explicit(bitcoin_txout.value),
+            asset: confidential::Asset::Explicit(asset_id),
+            value: confidential::Value::Explicit(self.value),
             nonce: Default::default(),
-            script_pubkey: Script::from(bitcoin_txout.script_pubkey.as_bytes().to_vec()),
+            script_pubkey: Script::from(self.script_pubkey.as_bytes().to_vec()),
             witness: Default::default(),
         }
     }
