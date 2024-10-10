@@ -139,6 +139,7 @@ impl TryFrom<Transaction> for bitcoin::Transaction {
         let tx_outs = elements_tx
             .output
             .iter()
+            .filter(|o| !o.is_fee())// Bitcoin transaction don't include explicit fee outputs
             .map(|o| {
                 let txout: bitcoin::TxOut = o.clone().try_into()?;
                 Ok(txout)
