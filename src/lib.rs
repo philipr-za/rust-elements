@@ -67,6 +67,8 @@ pub mod schnorr;
 mod serde_utils;
 // consider making upstream public
 mod endian;
+pub mod network;
+pub mod genesis;
 // re-export bitcoin deps which we re-use
 pub use bitcoin::bech32;
 pub use bitcoin::hashes;
@@ -85,3 +87,4 @@ pub use crate::locktime::LockTime;
 pub use crate::script::Script;
 pub use crate::sighash::SchnorrSighashType;
 pub use crate::schnorr::{SchnorrSig, SchnorrSigError};
+pub use crate::network::Network;
