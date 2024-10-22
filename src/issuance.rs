@@ -16,7 +16,6 @@
 
 use std::io;
 use std::str::FromStr;
-use bitcoin::constants::ChainHash;
 use crate::encode::{self, Encodable, Decodable};
 use crate::hashes::{self, hash_newtype, sha256, sha256d, Hash};
 use crate::fast_merkle_root::fast_merkle_root;
@@ -436,14 +435,14 @@ mod test {
     }
 
     #[test]
-    fn lquid_testnet() {
+    fn liquid_testnet() {
         // Manually calculate the AssetID for liquid testnet, it different from the regtest networks
         // in that its parent chainhash is [0u8; 32]
         let testnet_network_params = NetworkParams::new(Network::Liquidtestnet).unwrap();
 
         let asset_id = AssetId::pegged_asset_id_for_params_and_parent_chain_hash(
             &testnet_network_params,
-            ChainHash::from([0u8;32])
+            bitcoin::constants::ChainHash::from([0u8;32])
         );
 
         assert_eq!(asset_id, AssetId::LIQUIDTESTNET_BTC);

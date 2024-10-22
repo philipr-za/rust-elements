@@ -249,6 +249,41 @@ impl From<bitcoin::hash_types::TxMerkleNode> for TxMerkleNode {
     }
 }
 
+/// A wrapper for a `bitcoin::io:Writer` so that we can implement the standard `io::Write` for it
+pub struct BitcoinWriter<'a, W: bitcoin::io::Write + ?Sized>(&'a mut W);
+
+impl<'a, W: bitcoin::io::Write + ?Sized> From<&'a mut W> for BitcoinWriter<'a, W> {
+    fn from(w: &'a mut W) -> Self {
+        BitcoinWriter(w)
+    }
+}
+
+impl<'a, W: bitcoin::io::Write + ?Sized> io::Write for BitcoinWriter<'a, W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf).map_err(|e| e.into())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush().map_err(|e| e.into())
+    }
+}
+
+
+/// A wrapper for a `bitcoin::io:Reader` so that we can implement the standard `io::Read` for it
+pub struct BitcoinReader<'a, R: bitcoin::io::Read + ?Sized>(&'a mut R);
+
+impl<'a, R: bitcoin::io::Read + ?Sized> From<&'a mut R> for BitcoinReader<'a, R> {
+    fn from(r: &'a mut R) -> Self {
+        BitcoinReader(r)
+    }
+}
+
+impl<'a, R: bitcoin::io::Read + ?Sized> io::Read for BitcoinReader<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf).map_err(|e| e.into())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

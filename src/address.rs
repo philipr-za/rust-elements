@@ -32,7 +32,7 @@ use secp256k1_zkp::Verification;
 #[cfg(feature = "serde")]
 use serde;
 
-use crate::{blech32, Network};
+use crate::Network;
 
 use crate::schnorr::{TapTweak, TweakedPublicKey, UntweakedPublicKey};
 use crate::taproot::TapNodeHash;

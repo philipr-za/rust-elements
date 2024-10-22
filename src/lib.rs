@@ -100,6 +100,5 @@ pub use crate::transaction::{
     AssetIssuance, EcdsaSighashType, OutPoint, PeginData, PegoutData, Transaction, TxIn,
     TxInWitness, TxOut, TxOutWitness,
 };
-pub use crate::schnorr::{SchnorrSig, SchnorrSigError};
 pub use crate::network::Network;
 

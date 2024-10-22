@@ -100,10 +100,39 @@ impl error::Error for Error {
         }
     }
 }
+
+#[doc(hidden)]
+impl From<Error> for bitcoin::io::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Io(e) => e.into(),
+            e => {
+                bitcoin::io::Error::new(bitcoin::io::ErrorKind::Other, e)
+            }
+        }
+    }
+}
+
 #[doc(hidden)]
 impl From<bitcoin::consensus::encode::Error> for Error {
     fn from(e: bitcoin::consensus::encode::Error) -> Error {
         Error::Bitcoin(e)
+    }
+}
+
+#[doc(hidden)]
+impl From<Error> for bitcoin::consensus::encode::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Io(e) => bitcoin::consensus::encode::Error::from(bitcoin::io::Error::from(e)),
+            e => {
+                bitcoin::consensus::encode::Error::from(
+                    bitcoin::io::Error::from(
+                        io::Error::new(io::ErrorKind::Other, e)
+                    )
+                )
+            }
+        }
     }
 }
 

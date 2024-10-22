@@ -86,8 +86,6 @@ impl hex::FromHex for Script {
     }
 }
 
-
-
 impl str::FromStr for Script {
     type Err = hex::HexToBytesError;
     fn from_str(s: &str) -> Result<Self, hex::HexToBytesError> {

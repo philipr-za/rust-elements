@@ -15,8 +15,9 @@
 //! Genesis Blocks
 //!
 
+use bitcoin::hex::FromHex;
 use crate::hashes::{sha256, sha256d, Hash, HashEngine};
-use crate::hex::{FromHex, ToHex};
+use crate::hex;
 use crate::opcodes::all::OP_RETURN;
 use crate::opcodes::OP_TRUE;
 use crate::pset::serialize::Serialize;
@@ -25,6 +26,7 @@ use crate::{
     Transaction, TxIn, TxOut,
 };
 use crate::{AssetIssuance, ContractHash, Network, OutPoint, Txid};
+use crate::hex::DisplayHex;
 
 /// Parameters that influence chain consensus. These are these default values. Test and Regtest networks
 /// can have consensus parameters altered via configuration which could alter these values and the resulting
@@ -96,15 +98,14 @@ impl NetworkParams {
 pub fn commit_to_custom_network_parameters(params: &NetworkParams) -> Vec<u8> {
     let mut eng = sha256::Hash::engine();
     eng.input(params.network.clone().to_core_arg().as_bytes());
-    eng.input(params.fedpeg_script.to_hex().as_bytes());
-    eng.input(params.sign_block_script.to_hex().as_bytes());
+    eng.input(params.fedpeg_script.as_bytes().to_lower_hex_string().as_bytes());
+    eng.input(params.sign_block_script.as_bytes().to_lower_hex_string().as_bytes());
     sha256::Hash::from_engine(eng).serialize()
 }
 
 /// Produce the genesis transaction for a given elements Network
 fn liquid_genesis_tx(network_params: NetworkParams) -> Transaction {
     let commit = commit_to_custom_network_parameters(&network_params);
-
     let input = TxIn {
         previous_output: Default::default(),
         is_pegin: false,
@@ -123,7 +124,6 @@ fn liquid_genesis_tx(network_params: NetworkParams) -> Transaction {
         script_pubkey: script::Builder::new().push_opcode(OP_RETURN).into_script(),
         witness: Default::default(),
     };
-
     let ret = Transaction {
         version: 1,
         lock_time: LockTime::ZERO,
@@ -198,7 +198,6 @@ pub fn genesis_block(params: NetworkParams) -> Option<Block> {
                 } else {
                     tx.txid().to_raw_hash().into()
                 };
-
             Some(Block {
                 header: BlockHeader {
                     version: 1,

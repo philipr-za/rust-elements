@@ -16,7 +16,7 @@ macro_rules! impl_consensus_encoding {
     ($thing:ident, $($field:ident),+) => (
         impl $crate::encode::Encodable for $thing {
             #[inline]
-            fn consensus_encode<S: std::io::Write>(&self, mut s: S) -> Result<usize, $crate::encode::Error> {
+            fn consensus_encode<S: io::Write>(&self, mut s: S) -> Result<usize, $crate::encode::Error> {
                 let mut ret = 0;
                 $( ret += self.$field.consensus_encode(&mut s)?; )+
                 Ok(ret)
@@ -25,7 +25,7 @@ macro_rules! impl_consensus_encoding {
 
         impl $crate::encode::Decodable for $thing {
             #[inline]
-            fn consensus_decode<D: std::io::Read>(mut d: D) -> Result<$thing, $crate::encode::Error> {
+            fn consensus_decode<D: io::Read>(mut d: D) -> Result<$thing, $crate::encode::Error> {
                 Ok($thing {
                     $( $field: $crate::encode::Decodable::consensus_decode(&mut d)?, )+
                 })
@@ -450,48 +450,78 @@ macro_rules! hex_script(
 macro_rules! impl_array_newtype {
     ($thing:ident, $ty:ty, $len:literal) => {
         impl $thing {
-            /// Converts the object to a raw pointer
+            /// Converts the object to a raw pointer.
             #[inline]
             pub fn as_ptr(&self) -> *const $ty {
                 let &$thing(ref dat) = self;
                 dat.as_ptr()
             }
 
-            /// Converts the object to a mutable raw pointer
+            /// Converts the object to a mutable raw pointer.
             #[inline]
             pub fn as_mut_ptr(&mut self) -> *mut $ty {
                 let &mut $thing(ref mut dat) = self;
                 dat.as_mut_ptr()
             }
 
-            /// Returns the length of the object as an array
+            /// Returns the length of the object as an array.
             #[inline]
             pub fn len(&self) -> usize { $len }
 
             /// Returns whether the object, as an array, is empty. Always false.
             #[inline]
             pub fn is_empty(&self) -> bool { false }
-
-            /// Returns the underlying bytes.
-            #[inline]
-            pub fn as_bytes(&self) -> &[$ty; $len] { &self.0 }
-
-            /// Returns the underlying bytes.
-            #[inline]
-            pub fn to_bytes(self) -> [$ty; $len] { self.0.clone() }
-
-            /// Returns the underlying bytes.
-            #[inline]
-            pub fn into_bytes(self) -> [$ty; $len] { self.0 }
         }
 
-        impl<'a> core::convert::From<&'a [$ty]> for $thing {
-            fn from(data: &'a [$ty]) -> $thing {
-                assert_eq!(data.len(), $len);
-                let mut ret = [0; $len];
-                ret.copy_from_slice(&data[..]);
-                $thing(ret)
+        impl<'a> core::convert::From<[$ty; $len]> for $thing {
+            fn from(data: [$ty; $len]) -> Self { $thing(data) }
+        }
+
+        impl<'a> core::convert::From<&'a [$ty; $len]> for $thing {
+            fn from(data: &'a [$ty; $len]) -> Self { $thing(*data) }
+        }
+
+        impl<'a> core::convert::TryFrom<&'a [$ty]> for $thing {
+            type Error = core::array::TryFromSliceError;
+
+            fn try_from(data: &'a [$ty]) -> core::result::Result<Self, Self::Error> {
+                use core::convert::TryInto;
+
+                Ok($thing(data.try_into()?))
             }
+        }
+
+        impl AsRef<[$ty; $len]> for $thing {
+            fn as_ref(&self) -> &[$ty; $len] { &self.0 }
+        }
+
+        impl AsMut<[$ty; $len]> for $thing {
+            fn as_mut(&mut self) -> &mut [$ty; $len] { &mut self.0 }
+        }
+
+        impl AsRef<[$ty]> for $thing {
+            fn as_ref(&self) -> &[$ty] { &self.0 }
+        }
+
+        impl AsMut<[$ty]> for $thing {
+            fn as_mut(&mut self) -> &mut [$ty] { &mut self.0 }
+        }
+
+        impl core::borrow::Borrow<[$ty; $len]> for $thing {
+            fn borrow(&self) -> &[$ty; $len] { &self.0 }
+        }
+
+        impl core::borrow::BorrowMut<[$ty; $len]> for $thing {
+            fn borrow_mut(&mut self) -> &mut [$ty; $len] { &mut self.0 }
+        }
+
+        // The following two are valid because `[T; N]: Borrow<[T]>`
+        impl core::borrow::Borrow<[$ty]> for $thing {
+            fn borrow(&self) -> &[$ty] { &self.0 }
+        }
+
+        impl core::borrow::BorrowMut<[$ty]> for $thing {
+            fn borrow_mut(&mut self) -> &mut [$ty] { &mut self.0 }
         }
 
         impl<I> core::ops::Index<I> for $thing
@@ -508,18 +538,45 @@ macro_rules! impl_array_newtype {
 
 /// Implements several traits for byte-based newtypes.
 /// Implements:
-/// - core::fmt::LowerHex (implies hashes::hex::ToHex)
+/// - core::fmt::LowerHex
+/// - core::fmt::UpperHex
 /// - core::fmt::Display
 /// - core::str::FromStr
-/// - hashes::hex::FromHex
 macro_rules! impl_bytes_newtype {
     ($t:ident, $len:literal) => {
+        impl $t {
+            /// Returns a reference the underlying bytes.
+            #[inline]
+            pub fn as_bytes(&self) -> &[u8; $len] { &self.0 }
+
+            /// Returns the underlying bytes.
+            #[inline]
+            pub fn to_bytes(self) -> [u8; $len] {
+                // We rely on `Copy` being implemented for $t so conversion
+                // methods use the correct Rust naming conventions.
+                fn check_copy<T: Copy>() {}
+                check_copy::<$t>();
+
+                self.0
+            }
+
+            /// Creates `Self` from a hex string.
+            pub fn from_hex(s: &str) -> Result<Self, hex::HexToArrayError> {
+                Ok($t($crate::hex::FromHex::from_hex(s)?))
+            }
+        }
+
         impl core::fmt::LowerHex for $t {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                for &ch in self.0.iter() {
-                    write!(f, "{:02x}", ch)?;
-                }
-                Ok(())
+                use $crate::hex::{display, Case};
+                display::fmt_hex_exact!(f, $len, &self.0, Case::Lower)
+            }
+        }
+
+        impl core::fmt::UpperHex for $t {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                use $crate::hex::{display, Case};
+                display::fmt_hex_exact!(f, $len, &self.0, Case::Upper)
             }
         }
 
@@ -535,38 +592,19 @@ macro_rules! impl_bytes_newtype {
             }
         }
 
-        impl $crate::hashes::hex::FromHex for $t {
-            fn from_byte_iter<I>(iter: I) -> Result<Self, $crate::hashes::hex::Error>
-            where
-                I: core::iter::Iterator<Item = Result<u8, $crate::hashes::hex::Error>>
-                    + core::iter::ExactSizeIterator
-                    + core::iter::DoubleEndedIterator,
-            {
-                if iter.len() == $len {
-                    let mut ret = [0; $len];
-                    for (n, byte) in iter.enumerate() {
-                        ret[n] = byte?;
-                    }
-                    Ok($t(ret))
-                } else {
-                    Err($crate::hashes::hex::Error::InvalidLength(2 * $len, 2 * iter.len()))
-                }
-            }
-        }
-
         impl core::str::FromStr for $t {
-            type Err = $crate::hashes::hex::Error;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                $crate::hashes::hex::FromHex::from_hex(s)
-            }
+            type Err = $crate::hex::HexToArrayError;
+            fn from_str(s: &str) -> core::result::Result<Self, Self::Err> { Self::from_hex(s) }
         }
 
         #[cfg(feature = "serde")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         impl $crate::serde::Serialize for $t {
-            fn serialize<S: $crate::serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            fn serialize<S: $crate::serde::Serializer>(
+                &self,
+                s: S,
+            ) -> core::result::Result<S::Ok, S::Error> {
                 if s.is_human_readable() {
-                    s.serialize_str(&$crate::hex::ToHex::to_hex(self))
+                    s.collect_str(self)
                 } else {
                     s.serialize_bytes(&self[..])
                 }
@@ -574,9 +612,10 @@ macro_rules! impl_bytes_newtype {
         }
 
         #[cfg(feature = "serde")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         impl<'de> $crate::serde::Deserialize<'de> for $t {
-            fn deserialize<D: $crate::serde::Deserializer<'de>>(d: D) -> Result<$t, D::Error> {
+            fn deserialize<D: $crate::serde::Deserializer<'de>>(
+                d: D,
+            ) -> core::result::Result<$t, D::Error> {
                 if d.is_human_readable() {
                     struct HexVisitor;
 
@@ -587,24 +626,24 @@ macro_rules! impl_bytes_newtype {
                             f.write_str("an ASCII hex string")
                         }
 
-                        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+                        fn visit_bytes<E>(self, v: &[u8]) -> core::result::Result<Self::Value, E>
                         where
                             E: $crate::serde::de::Error,
                         {
                             use $crate::serde::de::Unexpected;
 
                             if let Ok(hex) = core::str::from_utf8(v) {
-                                $crate::hashes::hex::FromHex::from_hex(hex).map_err(E::custom)
+                                core::str::FromStr::from_str(hex).map_err(E::custom)
                             } else {
                                 return Err(E::invalid_value(Unexpected::Bytes(v), &self));
                             }
                         }
 
-                        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                        fn visit_str<E>(self, hex: &str) -> core::result::Result<Self::Value, E>
                         where
                             E: $crate::serde::de::Error,
                         {
-                            $crate::hashes::hex::FromHex::from_hex(v).map_err(E::custom)
+                            core::str::FromStr::from_str(hex).map_err(E::custom)
                         }
                     }
 
@@ -619,7 +658,7 @@ macro_rules! impl_bytes_newtype {
                             f.write_str("a bytestring")
                         }
 
-                        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+                        fn visit_bytes<E>(self, v: &[u8]) -> core::result::Result<Self::Value, E>
                         where
                             E: $crate::serde::de::Error,
                         {
