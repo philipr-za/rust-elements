@@ -15,7 +15,7 @@
 //! Consensus-encodable types
 //!
 
-use std::io::Cursor;
+use std::io::{Cursor, ErrorKind};
 use std::{error, fmt, io, mem};
 
 use bitcoin::consensus::encode as btcenc;
@@ -93,6 +93,30 @@ impl error::Error for Error {
             Error::Bitcoin(ref e) => Some(e),
             Error::Secp256k1zkp(ref e) => Some(e),
             _ => None,
+        }
+    }
+}
+
+impl From<Error> for io::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Io(e) => e,
+            e => {
+                io::Error::new(ErrorKind::Other, e)
+            }
+        }
+    }
+}
+
+impl From<Error> for btcenc::Error {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Io(e) => btcenc::Error::Io(e),
+            Error::Bitcoin(e) => e,
+            Error::OversizedVectorAllocation { requested, max } => btcenc::Error::OversizedVectorAllocation { requested, max },
+            Error::ParseFailed(s) => btcenc::Error::ParseFailed(s),
+            Error::UnexpectedEOF => btcenc::Error::Io(io::Error::new(ErrorKind::UnexpectedEof, Error::UnexpectedEOF)),
+            e => btcenc::Error::Io(io::Error::new(ErrorKind::Other, e)),
         }
     }
 }
