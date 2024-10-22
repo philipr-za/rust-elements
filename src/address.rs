@@ -32,6 +32,8 @@ use secp256k1_zkp::Verification;
 #[cfg(feature = "serde")]
 use serde;
 
+use crate::{blech32, Network};
+
 use crate::schnorr::{TapTweak, TweakedPublicKey, UntweakedPublicKey};
 use crate::taproot::TapNodeHash;
 
@@ -188,6 +190,19 @@ impl AddressParams {
         bech_hrp: Hrp::parse_unchecked("tex"),
         blech_hrp: Hrp::parse_unchecked("tlq"),
     };
+}
+
+/// Given a network enum what address params should be used?
+pub fn network_to_address_params(network: &Network) -> Result<&'static AddressParams, String>
+{
+    match network {
+        Network::Liquidv1 => Ok(&AddressParams::LIQUID),
+        Network::Liquidtestnet => Ok(&AddressParams::LIQUID_TESTNET),
+        Network::Elementsregtest(_) => Ok(&AddressParams::ELEMENTS),
+        network => {
+            Err(format!("Don't use bitcoin networks via elements addresses: {:?}", network))
+        },
+    }
 }
 
 /// The method used to produce an address
