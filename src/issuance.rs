@@ -16,11 +16,13 @@
 
 use std::io;
 use std::str::FromStr;
-
+use bitcoin::constants::ChainHash;
 use crate::encode::{self, Encodable, Decodable};
 use crate::hashes::{self, hash_newtype, sha256, sha256d, Hash};
 use crate::fast_merkle_root::fast_merkle_root;
 use secp256k1_zkp::Tag;
+use crate::genesis::{commit_to_custom_network_parameters, NetworkParams};
+use crate::{Network, Txid};
 use crate::transaction::OutPoint;
 
 /// The zero hash.
@@ -73,6 +75,14 @@ impl AssetId {
         0x34, 0xae, 0x22, 0xb7, 0xc4, 0x60, 0x64, 0x41,
         0x28, 0x29, 0xc0, 0xd0, 0x57, 0x9f, 0x0a, 0x71,
         0x3d, 0x1c, 0x04, 0xed, 0xe9, 0x79, 0x02, 0x6f,
+    ]));
+
+    /// The asset ID for L-BTC, Bitcoin on the Liquidtestnet network.
+    pub const LIQUIDTESTNET_BTC: AssetId = AssetId(sha256::Midstate([
+        0x49, 0x9a, 0x81, 0x85, 0x45, 0xf6, 0xba, 0xe3,
+        0x9f, 0xc0, 0x3b, 0x63, 0x7f, 0x2a, 0x4e, 0x1e,
+        0x64, 0xe5, 0x90, 0xca, 0xc1, 0xbc, 0x3a, 0x6f,
+        0x6d, 0x71, 0xaa, 0x44, 0x43, 0x65, 0x4c, 0x14,
     ]));
 
     /// Create an [AssetId] from its inner type.
@@ -145,6 +155,59 @@ impl AssetId {
     /// Convert an asset into [Tag]
     pub fn into_tag(self) -> Tag {
         self.0.to_byte_array().into()
+    }
+
+    /// Pegged asset id for given network parameters
+    pub fn pegged_asset_id_for_network_params(params: NetworkParams) -> Option<AssetId> {
+        match params.network {
+            Network::Liquidv1 => Some(Self::LIQUID_BTC),
+            Network::Liquidtestnet => Some(Self::LIQUIDTESTNET_BTC),
+            Network::Elementsregtest(ref network_str) => {
+                // Check the two most common Regtest network strings used by CLN and Liquid and
+                // return precalculated AssetId's for them
+                if network_str.as_str() == "elementsregtest" {
+                    return Some(AssetId(sha256::Midstate([
+                        0x23, 0x0f, 0x4f, 0x5d, 0x4b, 0x7c, 0x6f, 0xa8, 0x45, 0x80, 0x6e, 0xe4,
+                        0xf6, 0x77, 0x13, 0x45, 0x9e, 0x1b, 0x69, 0xe8, 0xe6, 0x0f, 0xce, 0xe2,
+                        0xe4, 0x94, 0x0c, 0x7a, 0x0d, 0x5d, 0xe1, 0xb2,
+                    ])));
+                }
+
+                if network_str.as_str() == "liquid-regtest" {
+                    return Some(AssetId(sha256::Midstate([
+                        0x5c, 0xe7, 0xb9, 0x63, 0xd3, 0x7f, 0x8f, 0x2d, 0x51, 0xca, 0xfb, 0xba,
+                        0x92, 0x8a, 0xaa, 0x9e, 0x22, 0x0b, 0x8b, 0xbc, 0x66, 0x05, 0x71, 0x49,
+                        0x9c, 0x03, 0x62, 0x8a, 0x38, 0x51, 0xb8, 0xce,
+                    ])));
+                }
+
+                // Current liquidv1test testnet
+                if network_str.as_str() == "liquidv1test" {
+                    return Some(AssetId(sha256::Midstate([
+                        0x0d, 0xc0, 0x42, 0x8c, 0xd0, 0x9f, 0x51, 0xea, 0x24, 0x89, 0x7b, 0xc0,
+                        0x58, 0xa8, 0x61, 0x6e, 0x38, 0xd7, 0x53, 0x81, 0x9c, 0xd0, 0xb7, 0xe3,
+                        0xb0, 0x78, 0x72, 0xff, 0x1c, 0xcc, 0x32, 0x25,
+                    ])));
+                }
+
+                // Else calculate the asset_id
+                let asset_id = Self::pegged_asset_id_for_params_and_parent_chain_hash(
+                    &params,
+                    bitcoin::Network::Regtest.chain_hash()
+                );
+                Some(asset_id)
+            }
+            _ => None,
+        }
+    }
+
+    /// Calculate the AssetId for the pegged asset for a given set of network parameters assuming
+    /// a Regtest parent network
+    fn pegged_asset_id_for_params_and_parent_chain_hash(params: &NetworkParams, parent_chainhash: bitcoin::blockdata::constants::ChainHash) -> AssetId {
+        let commit = commit_to_custom_network_parameters(params);
+        let asset_outpoint = OutPoint::new(Txid::from_slice(commit.as_slice()).expect("txid"), 0);
+        let asset_entropy = AssetId::generate_asset_entropy(asset_outpoint, ContractHash::from_slice(parent_chainhash.to_bytes().as_slice()).unwrap());
+        AssetId::from_entropy(asset_entropy)
     }
 }
 
@@ -265,6 +328,8 @@ mod test {
     use std::str::FromStr;
 
     use crate::hashes::sha256;
+    use crate::hex::FromHex;
+    use crate::Script;
 
     #[test]
     fn example_elements_core() {
@@ -368,5 +433,52 @@ mod test {
             AssetId::LIQUID_BTC.to_string(),
             "6f0279e9ed041c3d710a9f57d0c02928416460c4b722ae3457a11eec381c526d",
         );
+    }
+
+    #[test]
+    fn lquid_testnet() {
+        // Manually calculate the AssetID for liquid testnet, it different from the regtest networks
+        // in that its parent chainhash is [0u8; 32]
+        let testnet_network_params = NetworkParams::new(Network::Liquidtestnet).unwrap();
+
+        let asset_id = AssetId::pegged_asset_id_for_params_and_parent_chain_hash(
+            &testnet_network_params,
+            ChainHash::from([0u8;32])
+        );
+
+        assert_eq!(asset_id, AssetId::LIQUIDTESTNET_BTC);
+    }
+
+    #[test]
+    fn liquid_regtest() {
+        let network_params = NetworkParams::new(Network::Elementsregtest("elementsregtest".to_string())).unwrap();
+        let asset_id = AssetId::pegged_asset_id_for_params_and_parent_chain_hash(
+            &network_params,
+            bitcoin::Network::Regtest.chain_hash()
+        );
+        assert_eq!(asset_id, AssetId::pegged_asset_id_for_network_params(network_params).unwrap());
+
+        let network_params = NetworkParams::new(Network::Elementsregtest("liquid-regtest".to_string())).unwrap();
+        let asset_id = AssetId::pegged_asset_id_for_params_and_parent_chain_hash(
+            &network_params,
+            bitcoin::Network::Regtest.chain_hash()
+        );
+        assert_eq!(asset_id, AssetId::pegged_asset_id_for_network_params(network_params).unwrap());
+
+        // These are the current network parameters for liquidv1test
+        let liquidv1test_fedpeg_script_str = "745c87635b21022944b3c8d83d743e83e12b8a5654a9a48d741bae19f0498dd390b038502666b021023927b2c7716358d4f46cc1f8ca753f35818f593bd62ab2e19137522c35d671b721024c726615f549b02ea1db0fd2ab1973bfe20c296aa4ef14f8979da609b88caa6121027d8facb30d8648cbcea166f6094d1631053800332469827f90c5338368e48e3d2102a5ffc6da600cf25ebc01c4dfbe8ba220a0d35615db1a2c306ba06a355c34902b2102ab5b0b8e18d0dd7933176bbe0d0883a360ade9f45403accf7bdfa9c5439514f62102b0ffa5f8a78dd356afecc371bd826acb3671d8627561289d89a627a121a9c2272102b3278e89c3d5c19cbe5956d4a70a93a3bb0da4e8598d13c034ec5d50cce06b542102b43e4bd6c19b984ef36db6a622eea478f955676fe26786c3141b001e8f91402c2102e5a7aedc7889cad6f14d4534b546cd55d1fde039b0dd1ccb4c58ceac246327f72102e5fe77826e39e69421a0b478419a984c45d94228702aeac2acd540839fd034742103595fa9737e2720b9f600926f2350b4b1315b2248b76ef27fa287022609caead82103f2bbf79daf114617f35e719c46790c301ade558c247ced15f745a40db256a1e62103f4f161336c18c9095aff80aa38ca0417c345f73c73937298d49859e5bf7066e02103fec9f90addc21da7fa30da1568c8a5432a2372e89e8616468d55196c6ea2a7a25f6702c00fb275522102aef2b8a39966d49183fdddaefdc75af6d81ea6d16f7aba745cc4855e88f830842102141d452c3deeb937efff9f3378cd50bbde0543b77bbc6df6fc0e0addbf5578c52103948d24a9622cb14b198aed0739783d7c03d74c32c05780a86b43429c65679def5368ae";
+        let liquidv1test_signblock_script_str = "5b210208aab5bf120357aca12e5ea45b91f0e17899fb279d8b229b85144b2c6551847f210216dadbbcf20a75879a30395a8c9cdd38cd0425fbba9f9ffed6fb87b8567ce25a21022858265f4c09613a51d084bdc8de89bfd147626563435291317583246d70b7f1210263926c0110698e652d714436928ea3c3d5d00cc98672921b54ccba166138bfe421026f2a2094ad8b736a6238a2fc4bfe791436b0d4572521ed7b090d759b37bb960221028054e650d5daf2f8bbcbd9873384bf3c0c42118c6adaf8efdde3177d4538c3c12102ac6b43c5383a584ac96d00be92e0fd46edf3680391aad3b40aa72a296927f2472102df7b7e95765d4bc1242f336316e739f603408c5634924246c6726ef2e27300dd210345a2ab572c0471246d6a72cff095181ca10d47c64dd851a1243408b1dd9592f621035733ece61055d7530656f255f3af86b15e3a40eef946a9a640ddcf9cd7068cb12103651eecb547012ce45886c3178bacc683c065b62bdfd5a864b0759ab515af30cf2103a3589af52990e1407f3288ec295e00b1fb6f9df5f3bae37e91da3efd7fc0da8c2103ae5ef1d819281f6b0200d13e2a09cc567fb4cd088d0470f1a0d434eb45f2b2e52103d6265f258ddf00666c0e7ec1abd783e8f960066f5a0fe13e73f268fdf834b9ca2103ee0e6833bc8505c625bcec502a6eecc5eeed4898d176bf9abed9f7c21887e5cc5fae";
+        let liquidv1test_params = NetworkParams::new_custom(
+            Network::Elementsregtest("liquidv1test".to_string()),
+            Script::from_hex(liquidv1test_fedpeg_script_str).unwrap(),
+            Script::from_hex(liquidv1test_signblock_script_str).unwrap(),
+            0,
+        )
+            .unwrap();
+        let asset_id = AssetId::pegged_asset_id_for_params_and_parent_chain_hash(
+            &liquidv1test_params,
+            bitcoin::Network::Regtest.chain_hash()
+        );
+        assert_eq!(asset_id, AssetId::pegged_asset_id_for_network_params(liquidv1test_params).unwrap());
     }
 }
