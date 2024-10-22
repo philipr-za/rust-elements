@@ -412,6 +412,12 @@ impl Block {
         let txs_weight: usize = self.txdata.iter().map(Transaction::weight).sum();
         base_weight + txs_weight
     }
+
+    /// Computes the transaction merkle root.
+    pub fn compute_merkle_root(&self) -> Option<TxMerkleNode> {
+        let hashes = self.txdata.iter().map(|obj| obj.txid().to_raw_hash());
+        bitcoin::merkle_tree::calculate_root(hashes).map(|h| h.into())
+    }
 }
 
 impl bitcoin::consensus::Encodable for Block {
