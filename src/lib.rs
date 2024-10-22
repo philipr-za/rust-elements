@@ -73,6 +73,8 @@ mod transaction;
 mod endian;
 pub mod network;
 pub mod genesis;
+pub mod conversion_utils;
+
 // re-export bitcoin deps which we re-use
 pub use bitcoin::hashes;
 pub use bitcoin::hex;
