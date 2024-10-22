@@ -71,6 +71,8 @@ pub mod taproot;
 mod transaction;
 // consider making upstream public
 mod endian;
+pub mod network;
+pub mod genesis;
 // re-export bitcoin deps which we re-use
 pub use bitcoin::hashes;
 pub use bitcoin::hex;
@@ -96,4 +98,6 @@ pub use crate::transaction::{
     AssetIssuance, EcdsaSighashType, OutPoint, PeginData, PegoutData, Transaction, TxIn,
     TxInWitness, TxOut, TxOutWitness,
 };
+pub use crate::schnorr::{SchnorrSig, SchnorrSigError};
+pub use crate::network::Network;
 
