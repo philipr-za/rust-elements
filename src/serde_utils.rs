@@ -7,11 +7,11 @@ pub mod btreemap_byte_values {
     // NOTE: This module can be exactly copied to use with HashMap.
 
     use ::std::collections::BTreeMap;
-    use crate::hex::{FromHex, ToHex};
     use serde;
+    use crate::hex::{DisplayHex, FromHex};
 
     pub fn serialize<S, T>(v: &BTreeMap<T, Vec<u8>>, s: S)
-        -> Result<S::Ok, S::Error> where
+                           -> Result<S::Ok, S::Error> where
         S: serde::Serializer,
         T: serde::Serialize + ::std::hash::Hash + Eq + Ord,
     {
@@ -23,7 +23,7 @@ pub mod btreemap_byte_values {
         } else {
             let mut map = s.serialize_map(Some(v.len()))?;
             for (key, value) in v.iter() {
-                map.serialize_entry(key, &value.to_hex())?;
+                map.serialize_entry(key, &value.to_lower_hex_string())?;
             }
             map.end()
         }
@@ -223,8 +223,8 @@ pub mod hex_bytes {
     //! Module for serialization of byte arrays as hex strings.
     #![allow(missing_docs)]
 
-    use crate::hex::{FromHex, ToHex};
     use serde;
+    use crate::hex::{DisplayHex, FromHex};
 
     pub fn serialize<T, S>(bytes: &T, s: S) -> Result<S::Ok, S::Error>
         where T: serde::Serialize + AsRef<[u8]>, S: serde::Serializer
@@ -233,7 +233,7 @@ pub mod hex_bytes {
         if !s.is_human_readable() {
             serde::Serialize::serialize(bytes, s)
         } else {
-            s.serialize_str(&bytes.as_ref().to_hex())
+            s.serialize_str(&bytes.as_ref().to_lower_hex_string())
         }
     }
 

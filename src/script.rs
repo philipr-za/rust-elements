@@ -78,17 +78,19 @@ impl fmt::UpperHex for Script {
 }
 
 impl hex::FromHex for Script {
-    fn from_byte_iter<I>(iter: I) -> Result<Self, hex::Error>
-        where I: Iterator<Item=Result<u8, hex::Error>> +
-            ExactSizeIterator +
-            DoubleEndedIterator,
-    {
-        Vec::from_byte_iter(iter).map(|v| Script(Box::<[u8]>::from(v)))
+    type Error = hex::HexToBytesError;
+
+    fn from_hex(s: &str) -> Result<Self, Self::Error> {
+        let v = Vec::<u8>::from_hex(s)?;
+        Ok(Script(Box::<[u8]>::from(v)))
     }
 }
+
+
+
 impl str::FromStr for Script {
-    type Err = hex::Error;
-    fn from_str(s: &str) -> Result<Self, hex::Error> {
+    type Err = hex::HexToBytesError;
+    fn from_str(s: &str) -> Result<Self, hex::HexToBytesError> {
         hex::FromHex::from_hex(s)
     }
 }

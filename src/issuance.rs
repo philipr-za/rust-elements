@@ -21,6 +21,9 @@ use crate::encode::{self, Encodable, Decodable};
 use crate::hashes::{self, hash_newtype, sha256, sha256d, Hash};
 use crate::fast_merkle_root::fast_merkle_root;
 use secp256k1_zkp::Tag;
+use crate::genesis::{commit_to_custom_network_parameters, NetworkParams};
+use crate::{Network, Txid};
+use crate::hex::DisplayHex;
 use crate::transaction::OutPoint;
 
 /// The zero hash.
@@ -188,9 +191,8 @@ impl Decodable for AssetId {
 #[cfg(feature = "serde")]
 impl ::serde::Serialize for AssetId {
     fn serialize<S: ::serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use crate::hex::ToHex;
         if s.is_human_readable() {
-            s.serialize_str(&self.to_hex())
+            s.serialize_str(&self.0.as_ref().to_lower_hex_string())
         } else {
             s.serialize_bytes(&self.0[..])
         }

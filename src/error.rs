@@ -1,5 +1,7 @@
 //! Contains error types and other error handling tools.
 
+use std::fmt;
+use crate::hex::HexToArrayError;
 pub use crate::parse::ParseIntError;
 
 /// Impls std::error::Error for the specified type with appropriate attributes, possibly returning
@@ -33,4 +35,26 @@ macro_rules! write_err {
 }
 pub(crate) use write_err;
 
+/// Hex decoding error for Elements.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HexDecodeError {
+    /// The byte data decoded from the hex string cannot be converted into the final data structure
+    InvalidData,
+    /// Error converting the hex string to bytes
+    HexError(HexToArrayError)
+}
 
+impl fmt::Display for HexDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            HexDecodeError::InvalidData => write!(f, "invalid data"),
+            HexDecodeError::HexError(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl From<HexToArrayError> for HexDecodeError {
+    fn from(e: HexToArrayError) -> Self {
+        HexDecodeError::HexError(e)
+    }
+}

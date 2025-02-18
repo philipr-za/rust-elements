@@ -26,7 +26,8 @@ use crate::pset;
 use crate::transaction::{Transaction, TxIn, TxOut};
 
 pub use bitcoin::{self, consensus::encode::MAX_VEC_SIZE};
-
+use crate::hex::DisplayHex;
+use crate::error::HexDecodeError;
 use crate::taproot::TapLeafHash;
 
 /// Encoding error
@@ -56,7 +57,7 @@ pub enum Error {
     /// Pset related Errors
     PsetError(pset::Error),
     /// Hex parsing errors
-    HexError(crate::hex::Error),
+    HexError(HexDecodeError),
     /// Got a time-based locktime when expecting a height-based one, or vice-versa
     BadLockTime(crate::LockTime),
     /// VarInt was encoded in a non-minimal way.
@@ -135,8 +136,8 @@ impl From<secp256k1_zkp::Error> for Error {
 }
 
 #[doc(hidden)]
-impl From<crate::hex::Error> for Error {
-    fn from(e: crate::hex::Error) -> Self {
+impl From<HexDecodeError> for Error {
+    fn from(e: HexDecodeError) -> Self {
         Error::HexError(e)
     }
 }
@@ -164,7 +165,7 @@ pub fn serialize<T: Encodable + ?Sized>(data: &T) -> Vec<u8> {
 
 /// Encode an object into a hex-encoded string
 pub fn serialize_hex<T: Encodable + ?Sized>(data: &T) -> String {
-    crate::hex::ToHex::to_hex(&serialize(data)[..])
+    (&serialize(data)[..]).to_lower_hex_string()
 }
 
 /// Deserialize an object from a vector, will error if said deserialization
