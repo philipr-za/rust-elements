@@ -57,7 +57,6 @@ mod error;
 mod ext;
 mod fast_merkle_root;
 pub mod hash_types;
-pub mod hex;
 pub mod issuance;
 pub mod locktime;
 pub mod opcodes;
@@ -74,6 +73,8 @@ mod transaction;
 mod endian;
 // re-export bitcoin deps which we re-use
 pub use bitcoin::hashes;
+pub use bitcoin::hex;
+
 // export everything at the top level so it can be used as `elements::Transaction` etc.
 pub use crate::address::{Address, AddressError, AddressParams};
 pub use crate::blind::{
@@ -95,3 +96,4 @@ pub use crate::transaction::{
     AssetIssuance, EcdsaSighashType, OutPoint, PeginData, PegoutData, Transaction, TxIn,
     TxInWitness, TxOut, TxOutWitness,
 };
+

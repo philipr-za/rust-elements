@@ -18,7 +18,7 @@
 //! <https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki>.
 
 use std::{fmt, io};
-
+use hex::DisplayHex;
 use super::Error;
 use crate::encode::{self, deserialize, serialize, Decodable, Encodable, VarInt, MAX_VEC_SIZE};
 use crate::hex;
@@ -112,7 +112,7 @@ impl ProprietaryKey {
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "type: {:#x}, key: ", self.type_value)?;
-        hex::format_hex(&self.key[..], f)
+        write!(f, "{}", &self.key[..].as_hex())
     }
 }
 

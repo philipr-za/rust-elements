@@ -188,7 +188,6 @@ impl Decodable for AssetId {
 #[cfg(feature = "serde")]
 impl ::serde::Serialize for AssetId {
     fn serialize<S: ::serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use crate::hex::ToHex;
         if s.is_human_readable() {
             s.serialize_str(&self.to_hex())
         } else {

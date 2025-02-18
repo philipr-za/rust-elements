@@ -7,11 +7,11 @@ extern crate rand;
 use crate::{setup, Call};
 
 use bitcoin::{self, Address, Amount};
-use elements::hex::ToHex;
 use elements::encode::serialize;
 use elements::hashes::Hash;
 use elements::pset::PartiallySignedTransaction;
 use elements::{AssetId, ContractHash};
+use elements::hex::DisplayHex;
 use elementsd::bitcoincore_rpc::jsonrpc::serde_json::json;
 use elementsd::bitcoincore_rpc::RpcApi;
 use elementsd::ElementsD;
@@ -56,7 +56,7 @@ fn tx_issuance() {
     let entropy = AssetId::generate_asset_entropy(prevout, contract_hash);
     let asset_id = AssetId::from_entropy(entropy.clone());
     let reissuance_id = AssetId::reissuance_token_from_entropy(entropy, true);
-
+    
     let value = elementsd.call(
             "createpsbt",
             &[
@@ -113,7 +113,7 @@ fn tx_pegin() {
     bitcoind.client.generate_to_address(101, &btc_addr).unwrap();
     let proof = bitcoind.client.get_tx_out_proof(&[txid], None).unwrap();
     elementsd.generate(2);
-    let inputs = json!([ {"txid":txid, "vout": vout,"pegin_bitcoin_tx": tx_bytes.to_hex(), "pegin_txout_proof": proof.to_hex(), "pegin_claim_script": claim_script } ]);
+    let inputs = json!([ {"txid":txid, "vout": vout,"pegin_bitcoin_tx": tx_bytes.to_lower_hex_string(), "pegin_txout_proof": proof.to_lower_hex_string(), "pegin_claim_script": claim_script } ]);
     let outputs = json!([
         {address_lbtc: "0.9", "blinder_index": 0},
         {"fee": "0.1" }
@@ -155,7 +155,7 @@ fn psbt_rtt(elementsd: &ElementsD, base64: &str) {
         b_bytes[i] = b_bytes[i].wrapping_add(1);
         let base64 = BASE64_STANDARD.encode(&b_bytes);
         if let Some(decoded) = elementsd.decode_psbt(&base64) {
-            assert_ne!(a, decoded, "{} with changed byte {}", b_bytes.to_hex(), i);
+            assert_ne!(a, decoded, "{} with changed byte {}", b_bytes.to_lower_hex_string(), i);
         }
         b_bytes[i] = b_bytes[i].wrapping_sub(1);
     }

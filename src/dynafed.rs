@@ -15,7 +15,6 @@
 //! Dynamic Federations
 
 use std::{fmt, io};
-
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(feature = "serde")]
@@ -23,13 +22,14 @@ use serde::ser::{SerializeSeq, SerializeStruct};
 
 use crate::encode::{self, Encodable, Decodable};
 use crate::hashes::{Hash, sha256, sha256d};
+use crate::hex::DisplayHex;
 use crate::Script;
 
 /// ad-hoc struct to fmt in hex
 struct HexBytes<'a>(&'a [u8]);
 impl fmt::Display for HexBytes<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        crate::hex::format_hex(self.0, f)
+        write!(f, "{}", self.0.as_hex())
     }
 }
 impl fmt::Debug for HexBytes<'_> {
@@ -57,7 +57,7 @@ impl fmt::Display for HexBytesArray<'_> {
             if i != 0 {
                 write!(f, ", ")?;
             }
-            crate::hex::format_hex(&e[..], f)?;
+            write!(f, "{}", &e[..].as_hex())?;
         }
         write!(f, "]")
     }
@@ -655,7 +655,6 @@ mod tests {
     use std::fmt::{self, Write};
 
     use crate::hashes::sha256;
-    use crate::hex::ToHex;
     use crate::{BlockHash, TxMerkleNode};
 
     use super::*;
@@ -701,7 +700,7 @@ mod tests {
             elided_root: sha256::Midstate::from_byte_array([0; 32]),
         };
         assert_eq!(
-            compact_entry.calculate_root().to_hex(),
+            compact_entry.calculate_root().to_string().as_str(),
             "f98f149fd11da6fbe26d0ee53cadd28372fa9eed2cb7080f41da7ca311531777"
         );
 
@@ -713,7 +712,7 @@ mod tests {
             ext,
         ));
         assert_eq!(
-            full_entry.calculate_root().to_hex(),
+            full_entry.calculate_root().to_string().as_str(),
             "8eb1b83cce69a3d8b0bfb7fbe77ae8f1d24b57a9cae047b8c0aba084ad878249"
         );
 
@@ -730,7 +729,7 @@ mod tests {
             height: Default::default(),
         };
         assert_eq!(
-            header.calculate_dynafed_params_root().unwrap().to_hex(),
+            header.calculate_dynafed_params_root().unwrap().to_string().as_str(),
             "113160f76dc17fe367a2def79aefe06feeea9c795310c9e88aeedc23e145982e"
         );
     }

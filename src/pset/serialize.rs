@@ -25,11 +25,11 @@ use crate::encode::{
     self, deserialize, deserialize_partial, serialize, Decodable, Encodable, VarInt,
 };
 use crate::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
-use crate::hex::ToHex;
 use crate::{AssetId, BlockHash, Script, Transaction, TxOut, Txid};
 use bitcoin;
 use bitcoin::bip32::{ChildNumber, Fingerprint, KeySource};
 use bitcoin::{key::XOnlyPublicKey, PublicKey};
+use crate::hex::DisplayHex;
 use secp256k1_zkp::{self, RangeProof, SurjectionProof, Tweak};
 
 use super::map::{PsbtSighashType, TapTree};
@@ -54,7 +54,7 @@ pub trait Deserialize: Sized {
 
 /// Encode an object into a hex-encoded string
 pub fn serialize_hex<T: Serialize + ?Sized>(data: &T) -> String {
-    Serialize::serialize(data)[..].to_hex()
+    Serialize::serialize(data)[..].to_lower_hex_string()
 }
 
 impl_pset_de_serialize!(Transaction);
