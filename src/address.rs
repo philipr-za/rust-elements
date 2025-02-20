@@ -20,7 +20,6 @@ use std::error;
 use std::fmt;
 use std::fmt::Write as _;
 use std::str::FromStr;
-
 use bech32::{Bech32, Bech32m, ByteIterExt, Fe32, Fe32IterExt, Hrp};
 use crate::blech32::{Blech32, Blech32m};
 use crate::hashes::Hash;
@@ -70,6 +69,9 @@ pub enum AddressError {
 
     /// Address version byte were not recognized.
     InvalidAddressVersion(u8),
+
+    /// Address not valid for given network
+    InvalidNetwork(String, String),
 }
 
 impl From<bech32::primitives::decode::SegwitHrpstringError> for AddressError {
@@ -124,6 +126,9 @@ impl fmt::Display for AddressError {
             }
             AddressError::InvalidAddressVersion(v) => {
                 write!(f, "address version {} is invalid for this type", v)
+            }
+            AddressError::InvalidNetwork(ref a, ref n) => {
+                write!(f, "address {} is invalid for network {}", a, n)
             }
         }
     }
@@ -568,6 +573,18 @@ impl Address {
         }
         let data = base58::decode_check(s)?;
         Address::from_base58(&data, params)
+    }
+
+    /// Check if the address is valid for the provided network
+    pub fn check_network(&self, network: &Network) -> Result<(), AddressError> {
+        let params = network_to_address_params(network)
+            .map_err(|_| AddressError::InvalidNetwork(self.to_string(), network.to_string()))?;
+
+        if params == self.params {
+            Ok(())
+        } else {
+            Err(AddressError::InvalidNetwork(self.to_string(), network.to_string()))
+        }
     }
 }
 
