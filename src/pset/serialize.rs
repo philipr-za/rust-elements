@@ -320,7 +320,9 @@ impl Serialize for XOnlyPublicKey {
 
 impl Deserialize for XOnlyPublicKey {
     fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        XOnlyPublicKey::from_slice(bytes)
+        let key_bytes: [u8; 32] = TryFrom::try_from(bytes)
+            .map_err(|_| encode::Error::ParseFailed("Invalid xonly public key"))?;
+        XOnlyPublicKey::from_byte_array(key_bytes)
             .map_err(|_| encode::Error::ParseFailed("Invalid xonly public key"))
     }
 }
@@ -337,13 +339,15 @@ impl Deserialize for schnorr::SchnorrSig {
             65 => {
                 let hash_ty = SchnorrSighashType::from_u8(bytes[64])
                     .ok_or(encode::Error::ParseFailed("Invalid Sighash type"))?;
-                let sig = secp256k1_zkp::schnorr::Signature::from_slice(&bytes[..64])
-                    .map_err(|_| encode::Error::ParseFailed("Invalid Schnorr signature"))?;
+                let sig_bytes: [u8; 64] = TryFrom::try_from(&bytes[..64])
+                    .expect("slice of length 64 fits [u8; 64]");
+                let sig = secp256k1_zkp::schnorr::Signature::from_byte_array(sig_bytes);
                 Ok(schnorr::SchnorrSig { sig, hash_ty })
             }
             64 => {
-                let sig = secp256k1_zkp::schnorr::Signature::from_slice(&bytes[..64])
-                    .map_err(|_| encode::Error::ParseFailed("Invalid Schnorr signature"))?;
+                let sig_bytes: [u8; 64] = TryFrom::try_from(&bytes[..64])
+                    .expect("slice of length 64 fits [u8; 64]");
+                let sig = secp256k1_zkp::schnorr::Signature::from_byte_array(sig_bytes);
                 Ok(schnorr::SchnorrSig {
                     sig,
                     hash_ty: SchnorrSighashType::Default,

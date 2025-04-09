@@ -497,11 +497,11 @@ impl Nonce {
     /// Similar to [`Nonce::new_confidential`], but with a given `ephemeral_sk`
     /// instead of sampling it from rng.
     pub fn with_ephemeral_sk<C: Signing>(
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         ephemeral_sk: SecretKey,
         receiver_blinding_pk: &PublicKey
     ) -> (Self, SecretKey) {
-        let sender_pk = PublicKey::from_secret_key(secp, &ephemeral_sk);
+        let sender_pk = PublicKey::from_secret_key(&ephemeral_sk);
         let shared_secret = Self::make_shared_secret(receiver_blinding_pk, &ephemeral_sk);
         (Nonce::Confidential(sender_pk), shared_secret)
     }
@@ -533,8 +533,10 @@ impl Nonce {
 
             sha256d::Hash::hash(&dh_secret).to_byte_array()
         };
-
-        SecretKey::from_slice(&shared_secret[..32]).expect("always has exactly 32 bytes")
+	    
+	    let mut sk_bytes = [0u8; 32];
+	    sk_bytes.copy_from_slice(&shared_secret[..32]);
+        SecretKey::from_secret_bytes(sk_bytes).expect("always has exactly 32 bytes")
     }
 
     /// Serialized length, in bytes
@@ -975,8 +977,12 @@ impl AddAssign for ValueBlindingFactor {
             // Since libsecp does not expose low level APIs
             // for scalar arethematic, we need to abuse secret key
             // operations for this
-            let sk2 = SecretKey::from_slice(self.into_inner().as_ref()).expect("Valid key");
-            let sk = SecretKey::from_slice(other.into_inner().as_ref()).expect("Valid key");
+	        let mut sk_bytes = [0u8; 32];
+	        sk_bytes.copy_from_slice(other.into_inner().as_ref());
+	        let mut sk2_bytes = [0u8; 32];
+	        sk2_bytes.copy_from_slice(self.into_inner().as_ref());
+            let sk2 = SecretKey::from_secret_bytes(sk2_bytes).expect("Valid key");
+            let sk = SecretKey::from_secret_bytes(sk_bytes).expect("Valid key");
             // The only reason that secret key addition can fail
             // is when the keys add up to zero since we have already checked
             // keys are in valid secret keys
@@ -995,7 +1001,9 @@ impl Neg for ValueBlindingFactor {
         if self.0.as_ref() == &[0u8; 32] {
             self
         } else {
-            let sk = SecretKey::from_slice(self.into_inner().as_ref()).expect("Valid key").negate();
+	        let mut sk_bytes = [0u8; 32];
+	        sk_bytes.copy_from_slice(self.into_inner().as_ref());
+            let sk = SecretKey::from_secret_bytes(sk_bytes).expect("Valid key").negate();
             ValueBlindingFactor::from_slice(sk.as_ref()).expect("Valid Tweak")
         }
     }

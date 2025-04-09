@@ -11,7 +11,7 @@ rust-version = "1.74.0"
 bitcoin = "0.32.2"
 elements = {path = "../", features = ["base64"]}
 elementsd = "0.11.0"
-rand = "0.8"
+rand = "0.9"
 
 [package.metadata.rbmt.lint]
 # FIXME the bulk of these are because elementsd/bitcoind is much older than rust-bitcoin.

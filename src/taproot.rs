@@ -14,6 +14,7 @@
 //! Taproot
 //!
 use std::cmp::Reverse;
+use std::convert::TryFrom;
 use std::{error, io, fmt};
 
 use crate::hashes::{sha256, sha256t_hash_newtype, Hash, HashEngine};
@@ -632,7 +633,9 @@ impl ControlBlock {
         let output_key_parity = secp256k1_zkp::Parity::from_u8(sl[0] & 1)
             .expect("Parity is a single bit because it is masked by 0x01");
         let leaf_version = LeafVersion::from_u8(sl[0] & TAPROOT_LEAF_MASK)?;
-        let internal_key = UntweakedPublicKey::from_slice(&sl[1..TAPROOT_CONTROL_BASE_SIZE])
+        let internal_key_bytes: [u8; 32] = TryFrom::try_from(&sl[1..TAPROOT_CONTROL_BASE_SIZE])
+            .map_err(|_| TaprootError::InvalidControlBlockSize(sl.len()))?;
+        let internal_key = UntweakedPublicKey::from_byte_array(internal_key_bytes)
             .map_err(TaprootError::InvalidInternalKey)?;
         let merkle_branch = TaprootMerkleBranch::from_slice(&sl[TAPROOT_CONTROL_BASE_SIZE..])?;
         Ok(ControlBlock {
@@ -675,7 +678,7 @@ impl ControlBlock {
     /// output key, full verification must also execute the script with witness data
     pub fn verify_taproot_commitment<C: secp256k1_zkp::Verification>(
         &self,
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         output_key: &TweakedPublicKey,
         script: &Script,
     ) -> bool {
@@ -701,7 +704,6 @@ impl ControlBlock {
         let tweak = Scalar::from_be_bytes(tweak.to_byte_array()).expect("hash value greater than curve order");
 
         self.internal_key.tweak_add_check(
-            secp,
             output_key.as_inner(),
             self.output_key_parity,
             tweak,
