@@ -10,7 +10,9 @@ use secp256k1_zkp::{self, Generator, Secp256k1, Signing, Tweak, ZERO_TWEAK};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use super::CommitmentEncoder;
 use crate::encode::{self, Decodable, Encodable};
+use crate::encoding;
 use crate::issuance::AssetId;
 
 type ExplicitInner = AssetId;
@@ -18,6 +20,7 @@ type ConfInner = Generator;
 
 const EXPLICIT_LEN: usize = 32;
 const CONFIDENTIAL_LEN: usize = 33;
+const CONFIDENTIAL_LEN_LESS_PREFIX: usize = CONFIDENTIAL_LEN - 1;
 const CONF_PREFIX_1: u8 = 0x0a;
 const CONF_PREFIX_2: u8 = 0x0b;
 
@@ -342,5 +345,114 @@ impl<'de> Deserialize<'de> for BlindingFactor {
 
             d.deserialize_bytes(BytesVisitor)
         }
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`Asset`] type.
+    #[derive(Clone, Debug)]
+    pub struct Encoder<'e>(CommitmentEncoder<'e>);
+}
+
+impl encoding::Encode for Asset {
+    type Encoder<'e> = Encoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        Encoder::new(match *self {
+            Self::Null => CommitmentEncoder::Null(0),
+            Self::Explicit(ref id) => CommitmentEncoder::Explicit32(Some(1), id.as_byte_array()),
+            Self::Confidential(ref gen) => CommitmentEncoder::Explicit33(gen.serialize()),
+        })
+    }
+}
+
+decoder_state_machine! {
+    /// A decoder for the [`Asset`] type.
+    pub struct Decoder(enum DecoderInner {
+        Done(Asset),
+        Errored,
+        DecodePrefix {
+            decoder: encoding::ArrayDecoder<1>,
+            => transition_decode_prefix(prefix, ...) -> Result {
+                match prefix {
+                    [0] => Ok(DecoderInner::Done(Asset::Null)),
+                    [1] => {
+                        Ok(DecoderInner::DecodeExplicit { decoder: encoding::ArrayDecoder::default() })
+                    },
+                    [prefix @ (CONF_PREFIX_1 | CONF_PREFIX_2)] => {
+                        Ok(DecoderInner::DecodeConfidential { decoder: encoding::ArrayDecoder::default(), prefix })
+                    },
+                    [prefix] => Err(DecoderErrorInner::InvalidConfidentialPrefix { prefix })
+                }
+            }
+        },
+        DecodeExplicit {
+            decoder: encoding::ArrayDecoder<EXPLICIT_LEN>
+            => transition_decode_explicit(bytes, ...) -> Result {
+                Ok(DecoderInner::Done(Asset::Explicit(AssetId::from_byte_array(bytes))))
+            }
+        },
+        DecodeConfidential {
+            decoder: encoding::ArrayDecoder<CONFIDENTIAL_LEN_LESS_PREFIX>,
+            prefix: u8
+            => transition_decode_confidential(x_coord, ...) -> Result {
+                let mut bytes = [0; CONFIDENTIAL_LEN];
+                bytes[0] = prefix;
+                bytes[1..].copy_from_slice(&x_coord);
+                let gen = ConfInner::from_slice(&bytes)
+                    .map_err(DecoderErrorInner::InvalidCommitment)?;
+                Ok(DecoderInner::Done(Asset::Confidential(gen)))
+            }
+        },
+    });
+
+    /// A decoder error for the [`Asset`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct DecoderError(enum DecoderErrorInner {
+        [macro-inserted decoder variants]
+        /// Confidential prefix was not one of the two allowable values.
+        InvalidConfidentialPrefix {
+            prefix: u8,
+        },
+        /// Malformed confidential commitment.
+        InvalidCommitment(secp256k1_zkp::Error),
+    });
+}
+
+impl fmt::Display for DecoderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use DecoderErrorInner as Inner;
+        match self.0 {
+            Inner::DecodePrefix(_) => f.write_str("failed to decode prefix"),
+            Inner::DecodeExplicit(_) => f.write_str("failed to decode explicit value"),
+            Inner::DecodeConfidential(_) => f.write_str("failed to decode confidential value"),
+            Inner::InvalidConfidentialPrefix { prefix, .. } => {
+                write!(
+                    f,
+                    "confidential prefix 0x{:02x} was not one of 0, 1, 0x{:02x} or 0x{:02x}",
+                    prefix, CONF_PREFIX_1, CONF_PREFIX_2,
+                )
+            }
+            Inner::InvalidCommitment(_) => f.write_str("failed to parse confidential commitment"),
+        }
+    }
+}
+
+impl std::error::Error for DecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use DecoderErrorInner as Inner;
+        match self.0 {
+            Inner::DecodePrefix(ref e) => Some(e),
+            Inner::DecodeExplicit(ref e) => Some(e),
+            Inner::DecodeConfidential(ref e) => Some(e),
+            Inner::InvalidConfidentialPrefix { .. } => None,
+            Inner::InvalidCommitment(ref e) => Some(e),
+        }
+    }
+}
+
+impl Default for Decoder {
+    fn default() -> Self {
+        Self(DecoderInner::DecodePrefix { decoder: encoding::ArrayDecoder::default() })
     }
 }
