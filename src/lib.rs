@@ -28,6 +28,8 @@
 
 /// Re-export of bitcoin crate
 pub extern crate bitcoin;
+/// Re-export of bitcoin-consensus-encoding crate
+pub extern crate encoding;
 /// Re-export of `bitcoin_hashes` crate
 pub extern crate hashes;
 /// Re-export of hex crate
