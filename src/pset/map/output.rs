@@ -23,10 +23,10 @@ use crate::pset::map::Map;
 use crate::pset::raw;
 use crate::pset::Error;
 use crate::{confidential, pset};
-use crate::{encode, RangeProof, Script, TxOutWitness};
+use crate::{encode, RangeProof, Script, TxOutWitness, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
-use secp256k1_zkp::{self, Generator, SurjectionProof};
+use secp256k1_zkp::{self, Generator};
 
 use crate::issuance;
 
@@ -118,7 +118,7 @@ pub struct Output {
     /// Output value rangeproof
     pub value_rangeproof: Option<RangeProof>,
     /// Output Asset surjection proof
-    pub asset_surjection_proof: Option<Box<SurjectionProof>>,
+    pub asset_surjection_proof: Option<SurjectionProof>,
     /// Blinding pubkey which is used in receiving address
     pub blinding_key: Option<bitcoin::PublicKey>,
     /// The ephermal pk sampled by sender
@@ -128,7 +128,7 @@ pub struct Output {
     /// The blind value rangeproof
     pub blind_value_proof: Option<RangeProof>,
     /// The blind asset surjection proof
-    pub blind_asset_proof: Option<Box<SurjectionProof>>,
+    pub blind_asset_proof: Option<SurjectionProof>,
     /// Pset
     /// Other fields
     #[cfg_attr(
@@ -238,7 +238,11 @@ impl Output {
         } else {
             Some(txout.witness.rangeproof)
         };
-        rv.asset_surjection_proof = txout.witness.surjection_proof;
+        rv.asset_surjection_proof = if txout.witness.surjection_proof.is_empty() {
+            None
+        } else {
+            Some(txout.witness.surjection_proof)
+        };
         rv
     }
 
@@ -265,7 +269,9 @@ impl Output {
             .unwrap_or_default(),
             script_pubkey: self.script_pubkey.clone(),
             witness: TxOutWitness {
-                surjection_proof: self.asset_surjection_proof.clone(),
+                surjection_proof: self.asset_surjection_proof
+                    .clone()
+                    .unwrap_or(SurjectionProof::EMPTY),
                 rangeproof: self.value_rangeproof
                     .clone()
                     .unwrap_or(RangeProof::EMPTY),
@@ -363,7 +369,7 @@ impl Map for Output {
                             impl_pset_prop_insert_pair!(self.value_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF => {
-                            impl_pset_prop_insert_pair!(self.asset_surjection_proof <= <raw_key: _> | <raw_value : Box<SurjectionProof>>);
+                            impl_pset_prop_insert_pair!(self.asset_surjection_proof <= <raw_key: _> | <raw_value : SurjectionProof>);
                         }
                         PSBT_ELEMENTS_OUT_BLINDING_PUBKEY => {
                             impl_pset_prop_insert_pair!(self.blinding_key <= <raw_key: _> | <raw_value : PublicKey>);
@@ -378,7 +384,7 @@ impl Map for Output {
                             impl_pset_prop_insert_pair!(self.blind_value_proof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_OUT_BLIND_ASSET_PROOF => {
-                            impl_pset_prop_insert_pair!(self.blind_asset_proof <= <raw_key: _> | <raw_value : Box<SurjectionProof>>);
+                            impl_pset_prop_insert_pair!(self.blind_asset_proof <= <raw_key: _> | <raw_value : SurjectionProof>);
                         }
                         _ => match self.proprietary.entry(prop_key) {
                             Entry::Vacant(empty_key) => {
