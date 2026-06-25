@@ -785,3 +785,158 @@ macro_rules! decoder_state_machine {
         }
     };
 }
+
+/// Generates a simple decoder wrapper that converts output from an inner decoder.
+///
+/// This macro creates a decoder that wraps an existing decoder and applies a conversion
+/// function to transform the inner decoder's output into the target type. It's simpler
+/// than `decoder_state_machine!` as it only wraps a single decoder without state transitions.
+///
+/// # Syntax
+///
+/// ```ignore
+/// decoder_newtype! {
+///     /// Documentation for the decoder struct
+///     pub struct DecoderName(InnerDecoderType);
+///
+///     /// Documentation for the error struct
+///     pub struct ErrorName(enum InnerErrorName {
+///         // The first variant must be called Decode and hold the inner decoder type.
+///         Decode(InnerDecoderErrorType),
+///         // All other variants are free-form.
+///         CustomError1(ErrorType1),
+///         CustomError2 { field: ErrorType2 },
+///         // ... custom error variants
+///     });
+///
+///     impl Decode for TargetType {
+///         fn convert_inner(output_var) -> Result<_, ErrorName> {
+///             // Conversion logic
+///         }
+///     }
+/// }
+/// ```
+///
+/// # Generated Code
+///
+/// The macro generates:
+/// - A public decoder struct wrapping the inner decoder
+/// - A public error struct wrapping a private error enum
+/// - A private error enum with `Decode` variant and custom variants
+/// - `Decoder` trait implementation with `push_bytes`, `end`, and `read_limit` methods
+/// - `Decode` trait implementation for the target type
+///
+/// The macro does **not** generate a `fmt::Display` or `std::error::Error` impl
+/// for `ErrorName`, so the user must implement these outside of the macro.
+///
+/// # Parameters
+///
+/// - `DecoderName` - The wrapper decoder struct name
+/// - `InnerDecoderType` - The existing decoder type to wrap
+/// - `ErrorName` - The error struct name
+/// - `InnerErrorName` - The private error enum name
+/// - `InnerDecoderErrorType` - The error type from the inner decoder
+/// - `TargetType` - The final output type after conversion
+/// - `convert_inner` - Function that converts inner output to target type
+///
+/// # Conversion Function
+///
+/// The conversion function:
+/// - Takes the inner decoder's output as its parameter
+/// - Returns `Result<TargetType, ErrorName>`
+/// - Is called automatically when the inner decoder completes
+/// - Can return custom errors defined in the error enum
+///
+/// # Error Handling
+///
+/// The macro automatically:
+/// - Creates a `Decode` variant containing the inner decoder's error
+/// - Maps inner decoder errors to the `Decode` variant
+/// - Allows custom error variants for conversion failures
+///
+/// # Example Usage
+///
+/// ```ignore
+/// decoder_newtype! {
+///     /// Decoder for range proofs
+///     #[derive(Default)]
+///     pub struct Decoder(encoding::ByteVecDecoder);
+///
+///     /// Decoder error for range proofs
+///     #[derive(Clone, PartialEq, Eq, Debug)]
+///     pub struct DecoderError(enum DecoderErrorInner {
+///         Decode(encoding::ByteVecDecoderError),
+///         RangeProof(secp256k1_zkp::Error),
+///     });
+///
+///     impl Decode for RangeProof {
+///         fn convert_inner(v) -> Result<_, DecoderError> {
+///             RangeProof::from_slice(&v).map_err(DecoderError::RangeProof)
+///         }
+///     }
+/// }
+/// ```
+macro_rules! decoder_newtype {
+    (
+        $(#[$($struct_attr:tt)*])*
+        pub struct $outer_ty:ident($inner_ty:ty);
+
+        $(#[$($error_struct_attr:tt)*])*
+        pub struct $error_ty:ident(enum $inner_error_ty:ident {
+            Decode($inner_ty_error:ty),
+            $($extra_variants:tt)*
+        });
+
+        impl Decode for $target_ty:ty {
+            fn convert_inner($output:ident) -> Result<_, $error_inner1:ty> {
+                $($output_fn_inner:tt)*
+            }
+        }
+    ) => {
+        $(#[$($struct_attr)*])*
+        pub struct $outer_ty($inner_ty);
+
+        $(#[$($error_struct_attr)*])*
+        pub struct $error_ty($inner_error_ty);
+
+        $(#[$($error_struct_attr)*])*
+        enum $inner_error_ty {
+            Decode($inner_ty_error),
+            $($extra_variants)*
+        }
+
+        impl $crate::encoding::Decoder for $outer_ty {
+            type Output = $target_ty;
+            type Error = $error_ty;
+
+            fn push_bytes(
+                &mut self,
+                bytes: &mut &[u8],
+            ) -> Result<$crate::encoding::DecoderStatus, Self::Error> {
+                self.0
+                    .push_bytes(bytes)
+                    .map_err($inner_error_ty::Decode)
+                    .map_err($error_ty)
+            }
+
+            fn end(self) -> Result<Self::Output, Self::Error> {
+                let $output = self.0
+                    .end()
+                    .map_err($inner_error_ty::Decode)
+                    .map_err($error_ty)?;
+                let converted = {
+                    $($output_fn_inner)*
+                };
+                converted.map_err($error_ty)
+            }
+
+            fn read_limit(&self) -> usize {
+                self.0.read_limit()
+            }
+        }
+
+        impl $crate::encoding::Decode for $target_ty{
+            type Decoder = $outer_ty;
+        }
+    };
+}

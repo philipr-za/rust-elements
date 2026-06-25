@@ -36,8 +36,14 @@ pub use self::asset::{
 pub use self::nonce::{
     Decoder as NonceDecoder, DecoderError as NonceDecoderError, Encoder as NonceEncoder, Nonce,
 };
-pub use self::range_proof::RangeProof;
-pub use self::surjection_proof::SurjectionProof;
+pub use self::range_proof::{
+    Decoder as RangeProofDecoder, DecoderError as RangeProofDecoderError,
+    Encoder as RangeProofEncoder, RangeProof,
+};
+pub use self::surjection_proof::{
+    Decoder as SurjectionProofDecoder, DecoderError as SurjectionProofDecoderError,
+    Encoder as SurjectionProofEncoder, SurjectionProof,
+};
 pub use self::value::{
     BlindingFactor as ValueBlindingFactor, Decoder as ValueDecoder,
     DecoderError as ValueDecoderError, Encoder as ValueEncoder, Value,
@@ -85,6 +91,52 @@ impl encoding::ExactSizeEncoder for CommitmentEncoder<'_> {
             Self::Explicit32(None, _) => 32,
             Self::Explicit33(_) => 33,
         }
+    }
+}
+
+/// Because the rust-secp256k1-zkp proof types have no `as_bytes()` method, we need
+/// to serialize them to a byte vector before encoding them.
+///
+/// This encoder accomplishes that -- this situation never happens in rust-bitcoin
+/// so there is no "owned bytes encoder" shipped with bitcoin-consensus-encoding.
+#[derive(Clone, Debug)]
+struct PrefixedByteVecEncoder {
+    prefix_encoder: Option<encoding::CompactSizeEncoder>,
+    data: Vec<u8>,
+}
+
+impl PrefixedByteVecEncoder {
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { prefix_encoder: Some(encoding::CompactSizeEncoder::new(data.len())), data }
+    }
+}
+
+impl encoding::Encoder for PrefixedByteVecEncoder {
+    fn current_chunk(&self) -> &[u8] {
+        if let Some(ref enc) = self.prefix_encoder {
+            return enc.current_chunk();
+        }
+        &self.data
+    }
+
+    fn advance(&mut self) -> encoding::EncoderStatus {
+        if let Some(ref mut enc) = self.prefix_encoder {
+            if enc.advance().has_finished() {
+                self.prefix_encoder = None;
+                if self.data.is_empty() {
+                    return encoding::EncoderStatus::Finished;
+                }
+            }
+            encoding::EncoderStatus::HasMore
+        } else {
+            encoding::EncoderStatus::Finished
+        }
+    }
+}
+
+impl encoding::ExactSizeEncoder for PrefixedByteVecEncoder {
+    fn len(&self) -> usize {
+        self.prefix_encoder.as_ref().map_or(0, encoding::CompactSizeEncoder::len) + self.data.len()
     }
 }
 
@@ -190,6 +242,15 @@ mod tests {
         0x0b, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
         1, 1, 1, 1,
     ];
+
+    #[test]
+    fn prefixed_byte_encoder() {
+        assert_eq!(encoding::drain_to_vec(&mut PrefixedByteVecEncoder::new(vec![])), [0]);
+        assert_eq!(
+            encoding::drain_to_vec(&mut PrefixedByteVecEncoder::new(vec![1, 2, 3])),
+            [3, 1, 2, 3]
+        );
+    }
 
     #[test]
     fn encode_length() {

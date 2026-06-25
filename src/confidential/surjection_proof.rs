@@ -2,6 +2,7 @@
 
 //! Surjection Proofs
 
+use core::fmt;
 use std::io;
 
 use secp256k1_zkp::rand::{CryptoRng, RngCore};
@@ -10,7 +11,7 @@ use secp256k1_zkp::{self, Generator, Secp256k1, Signing, Tweak, ZERO_TWEAK};
 use serde::{Deserializer, Serializer};
 
 use crate::confidential::{AssetBlindingFactor, AssetId};
-use crate::encode;
+use crate::{encode, encoding};
 
 /// A surjection proof, proving that an asset commitment commits to the same asset ID
 /// as a commitment from a given set.
@@ -141,5 +142,58 @@ impl<'de> serde::Deserialize<'de> for SurjectionProof {
     {
         Option::<secp256k1_zkp::SurjectionProof>::deserialize(deserializer)
             .map(|inner| Self { inner: inner.map(Box::new) })
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`SurjectionProof`] type.
+    #[derive(Clone, Debug)]
+    pub struct Encoder<'e>(super::PrefixedByteVecEncoder);
+}
+
+impl encoding::Encode for SurjectionProof {
+    type Encoder<'e> = Encoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        Encoder::new(super::PrefixedByteVecEncoder::new(self.to_vec()))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`SurjectionProof`] type.
+    #[derive(Default)]
+    pub struct Decoder(encoding::ByteVecDecoder);
+
+    /// Decoder error for the [`SurjectionProof`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct DecoderError(enum DecoderErrorInner {
+        Decode(encoding::ByteVecDecoderError),
+        SurjectionProof(secp256k1_zkp::Error),
+    });
+
+    impl Decode for SurjectionProof {
+        fn convert_inner(v) -> Result<_, DecoderErrorInner> {
+            Self::Output::from_slice(&v).map_err(DecoderErrorInner::SurjectionProof)
+        }
+    }
+}
+
+impl fmt::Display for DecoderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use DecoderErrorInner as Inner;
+        match self.0 {
+            Inner::Decode(..) => f.write_str("error decoding byte vector"),
+            Inner::SurjectionProof(..) => f.write_str("error decoding surjection proof"),
+        }
+    }
+}
+
+impl std::error::Error for DecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use DecoderErrorInner as Inner;
+        match self.0 {
+            Inner::Decode(ref e) => Some(e),
+            Inner::SurjectionProof(ref e) => Some(e),
+        }
     }
 }
