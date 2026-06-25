@@ -97,8 +97,8 @@ pub use crate::sighash::SchnorrSighashType;
 pub use crate::transaction::{
     AssetIssuance, EcdsaSighashType, OutPoint, PeginData, PeginDataDecoder, PeginDataEncoder,
     PeginWitness, PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder, PegoutData,
-    Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness, Witness, WitnessDecoder,
-    WitnessDecoderError, WitnessEncoder,
+    Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutDecoder, TxOutDecoderError, TxOutEncoder,
+    TxOutWitness, Witness, WitnessDecoder, WitnessDecoderError, WitnessEncoder,
 };
 
 // Encode a compact size to a slice without allocating
