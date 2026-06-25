@@ -2406,7 +2406,7 @@ mod tests {
 
     #[test]
     fn discount_vsize() {
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/1in2out_pegin.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/1in2out_pegin.hex"));
         assert_eq!(tx.input.len(), 1);
         assert!(tx.input[0].is_pegin());
         assert_eq!(tx.output.len(), 2);
@@ -2415,7 +2415,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 2403);
         assert_eq!(tx.discount_vsize(), 601);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/1in2out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/1in2out_tx.hex"));
         assert_eq!(tx.input.len(), 1);
         assert_eq!(tx.output.len(), 2);
         assert_eq!(tx.weight(), 5330);
@@ -2423,7 +2423,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 863);
         assert_eq!(tx.discount_vsize(), 216);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/1in3out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/1in3out_tx.hex"));
         assert_eq!(tx.input.len(), 1);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 10107);
@@ -2431,7 +2431,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1173);
         assert_eq!(tx.discount_vsize(), 294);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/2in3out_exp.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/2in3out_exp.hex"));
         assert_eq!(tx.input.len(), 2);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 1302);
@@ -2439,7 +2439,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1302);
         assert_eq!(tx.discount_vsize(), 326);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/2in3out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/2in3out_tx.hex"));
         assert_eq!(tx.input.len(), 2);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 10300);
@@ -2447,7 +2447,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1302);
         assert_eq!(tx.discount_vsize(), 326);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/2in3out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/2in3out_tx.hex"));
         assert_eq!(tx.input.len(), 2);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 10300);
@@ -2455,7 +2455,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1302);
         assert_eq!(tx.discount_vsize(), 326);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/2in3out_tx2.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/2in3out_tx2.hex"));
         assert_eq!(tx.input.len(), 2);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 10536);
@@ -2463,7 +2463,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1538);
         assert_eq!(tx.discount_vsize(), 385);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/3in3out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/3in3out_tx.hex"));
         assert_eq!(tx.input.len(), 3);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 10922);
@@ -2471,7 +2471,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1860);
         assert_eq!(tx.discount_vsize(), 465);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/4in3out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/4in3out_tx.hex"));
         assert_eq!(tx.input.len(), 4);
         assert_eq!(tx.output.len(), 3);
         assert_eq!(tx.weight(), 11192);
@@ -2479,7 +2479,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 2130);
         assert_eq!(tx.discount_vsize(), 533);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/2in4out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/2in4out_tx.hex"));
         assert_eq!(tx.input.len(), 2);
         assert_eq!(tx.output.len(), 4);
         assert_eq!(tx.weight(), 15261);
@@ -2487,7 +2487,7 @@ mod tests {
         assert_eq!(tx.discount_weight(), 1764);
         assert_eq!(tx.discount_vsize(), 441);
 
-        let tx: Transaction = hex_deserialize!(include_str!("../tests/data/2in5out_tx.hex"));
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/2in5out_tx.hex"));
         assert_eq!(tx.input.len(), 2);
         assert_eq!(tx.output.len(), 5);
         assert_eq!(tx.weight(), 20030);
@@ -2501,8 +2501,8 @@ mod tests {
         // Check that rust-elements can deserialize tests vector from ELIP203
         // from
         // https://github.com/ElementsProject/ELIPs/blob/main/elip-0203.mediawiki
-        let tx3: Transaction = hex_deserialize!(include_str!("../tests/data/elip203_3.hex"));
-        let tx4: Transaction = hex_deserialize!(include_str!("../tests/data/elip203_4.hex"));
+        let tx3: Transaction = hex_deserialize!(include_str!("../../tests/data/elip203_3.hex"));
+        let tx4: Transaction = hex_deserialize!(include_str!("../../tests/data/elip203_4.hex"));
         let max_money = 2_100_000_000_000_000;
         assert!(tx3.input[0].asset_issuance.amount.explicit().unwrap() > max_money);
         assert!(tx4.input[0].asset_issuance.inflation_keys.explicit().unwrap() > max_money);
@@ -2513,7 +2513,7 @@ mod tests {
         use crate::encode::{serialize, deserialize};
 
         // Start with a transaction that has a pegin.
-        let base_tx: Transaction = hex_deserialize!(include_str!("../tests/data/1in2out_pegin.hex"));
+        let base_tx: Transaction = hex_deserialize!(include_str!("../../tests/data/1in2out_pegin.hex"));
 
         // Test case (a): input witnesses but no output witnesses
         let mut tx_input_only = base_tx.clone();
