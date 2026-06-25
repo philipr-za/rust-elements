@@ -306,8 +306,7 @@ impl PartiallySignedTransaction {
                         .unwrap_or(RangeProof::EMPTY),
                     script_witness: psetin
                         .final_script_witness
-                        .as_ref()
-                        .map(Vec::to_owned)
+                        .clone()
                         .unwrap_or_default(),
                     pegin_witness: psetin
                         .pegin_witness

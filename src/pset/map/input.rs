@@ -199,7 +199,7 @@ pub struct Input {
     pub final_script_sig: Option<Script>,
     /// The finalized, fully-constructed scriptWitness with signatures and any
     /// other scripts necessary for this input to pass validation.
-    pub final_script_witness: Option<Vec<Vec<u8>>>,
+    pub final_script_witness: Option<crate::Witness>,
     /// TODO: Proof of reserves commitment
     /// RIPEMD160 hash to preimage map
     pub ripemd160_preimages: BTreeMap<ripemd160::Hash, Vec<u8>>,
@@ -627,7 +627,7 @@ impl Map for Input {
             }
             PSET_IN_FINAL_SCRIPTWITNESS => {
                 impl_pset_insert_pair! {
-                    self.final_script_witness <= <raw_key: _>|<raw_value: Vec<Vec<u8>>>
+                    self.final_script_witness <= <raw_key: _>|<raw_value: crate::Witness>
                 }
             }
             PSET_IN_RIPEMD160 => {

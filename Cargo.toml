@@ -74,6 +74,7 @@ match_bool = "allow" # Adds extra indentation and LOC.
 match_same_arms = "allow" # Collapses things that are conceptually unrelated to each other.
 must_use_candidate = "allow" # Useful for audit but many false positives.
 similar_names = "allow" # Too many (subjectively) false positives.
+struct_field_names = "allow" # Dumb
 # Exhaustive list of pedantic clippy lints
 assigning_clones = "warn"
 bool_to_int_with_if = "warn"
@@ -168,7 +169,6 @@ stable_sort_primitive = "warn"
 str_split_at_newline = "warn"
 string_add_assign = "warn"
 struct_excessive_bools = "warn"
-struct_field_names = "warn"
 too_many_lines = "allow" # FIXME 14 triggers for this lint; probably most should be fixed
 transmute_ptr_to_ptr = "warn"
 trivially_copy_pass_by_ref = "warn"

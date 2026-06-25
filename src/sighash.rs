@@ -831,7 +831,7 @@ impl<R: DerefMut<Target = Transaction>> SighashCache<R> {
     ///     sig_hasher.witness_mut(inp).unwrap().push(Vec::new());
     /// }
     /// ```
-    pub fn witness_mut(&mut self, input_index: usize) -> Option<&mut Vec<Vec<u8>>> {
+    pub fn witness_mut(&mut self, input_index: usize) -> Option<&mut crate::Witness> {
         self.tx.input.get_mut(input_index).map(|i| &mut i.witness.script_witness)
     }
 }

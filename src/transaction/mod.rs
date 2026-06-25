@@ -15,6 +15,8 @@
 //! # Transactions
 //!
 
+mod witness;
+
 use std::{io, fmt, str, cmp};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -34,6 +36,8 @@ use crate::{LockTime, RangeProof, Script, SurjectionProof, Txid, Wtxid};
 use secp256k1_zkp::{
     Tweak, ZERO_TWEAK,
 };
+
+pub use self::witness::{Witness, WitnessDecoder, WitnessDecoderError, WitnessEncoder};
 
 /// Description of an asset issuance in a transaction input
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
@@ -365,7 +369,7 @@ pub struct TxInWitness {
     /// Rangeproof for inflation keys
     pub inflation_keys_rangeproof: RangeProof,
     /// Traditional script witness
-    pub script_witness: Vec<Vec<u8>>,
+    pub script_witness: Witness,
     /// Pegin witness, basically the same thing
     pub pegin_witness: Vec<Vec<u8>>,
 }
@@ -377,7 +381,7 @@ impl TxInWitness {
         TxInWitness {
             amount_rangeproof: RangeProof::EMPTY,
             inflation_keys_rangeproof: RangeProof::EMPTY,
-            script_witness: Vec::new(),
+            script_witness: Witness::new(),
             pegin_witness: Vec::new(),
         }
     }

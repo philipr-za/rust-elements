@@ -77,6 +77,8 @@ mod endian;
 pub mod genesis;
 
 // export everything at the top level so it can be used as `elements::Transaction` etc.
+use internals::array_vec::ArrayVec;
+
 pub use crate::address::{Address, AddressError, AddressParams};
 pub use crate::blind::{
     BlindError, ConfidentialTxOutError, CtLocation, CtLocationType, RangeProofMessage,
@@ -94,5 +96,13 @@ pub use crate::script::Script;
 pub use crate::sighash::SchnorrSighashType;
 pub use crate::transaction::{
     AssetIssuance, EcdsaSighashType, OutPoint, PeginData, PegoutData, Sequence, Transaction, TxIn,
-    TxInWitness, TxOut, TxOutWitness,
+    TxInWitness, TxOut, TxOutWitness, Witness, WitnessDecoder, WitnessDecoderError, WitnessEncoder,
 };
+
+// Encode a compact size to a slice without allocating
+pub(crate) fn compact_size_encode(value: usize) -> ArrayVec<u8, 9> {
+    use crate::encoding::Encoder as _;
+
+    let encoder = encoding::CompactSizeEncoder::new(value);
+    ArrayVec::from_slice(encoder.current_chunk())
+}
