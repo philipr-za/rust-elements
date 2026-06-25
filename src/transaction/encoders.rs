@@ -5,8 +5,105 @@
 //! These are encapsulated because there are many of them, but in the end we
 //! only expose the top-level ones outside of this module.
 
-use super::{TxOut, TxOutWitness};
-use crate::encoding::{encoder_newtype_exact, Encode, Encoder, Encoder2, Encoder4, EncoderStatus};
+use super::{AssetIssuance, Sequence, TxIn, TxOut, TxOutWitness};
+use crate::encoding::{
+    encoder_newtype_exact, ArrayEncoder, ArrayRefEncoder, Encode, Encoder, Encoder2, Encoder4,
+    EncoderStatus,
+};
+
+// While we define an [`OutPointEncoder`] struct, we don't actually implement `Encode` or `Decode`
+// for [`OutPoint`], since the outpoint encoding depends on pegin/issuance data from the rest of
+// the txin. We just use it as a private building block.
+
+encoder_newtype_exact! {
+    /// Encoder for the [`OutPoint`] type.
+    #[derive(Clone, Debug)]
+    struct OutPointEncoder<'e>(Encoder2<
+        ArrayRefEncoder<'e, 32>,
+        ArrayEncoder<4>,
+    >);
+}
+
+impl<'e> OutPointEncoder<'e> {
+    fn from_txin(txin: &'e TxIn) -> Self {
+        let mut vout = txin.previous_output.vout;
+        if txin.is_pegin {
+            vout |= 1 << 30;
+        }
+        if txin.has_issuance() {
+            vout |= 1 << 31;
+        }
+
+        Self::new(Encoder2::new(
+            ArrayRefEncoder::without_length_prefix(txin.previous_output.txid.as_byte_array()),
+            ArrayEncoder::without_length_prefix(vout.to_le_bytes()),
+        ))
+    }
+}
+
+encoder_newtype_exact! {
+    /// Encoder for the [`Sequence`] type.
+    #[derive(Clone, Debug)]
+    pub struct SequenceEncoder<'e>(ArrayEncoder<4>);
+}
+
+impl Encode for Sequence {
+    type Encoder<'e> = SequenceEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        SequenceEncoder::new(ArrayEncoder::without_length_prefix(
+            self.to_consensus_u32().to_le_bytes(),
+        ))
+    }
+}
+
+encoder_newtype_exact! {
+    /// Encoder for the [`AssetIssuance`] type.
+    #[derive(Clone, Debug)]
+    pub struct AssetIssuanceEncoder<'e>(Encoder4<
+        ArrayRefEncoder<'e, 32>,
+        ArrayRefEncoder<'e, 32>,
+        crate::confidential::ValueEncoder<'e>,
+        crate::confidential::ValueEncoder<'e>,
+    >);
+}
+
+impl Encode for AssetIssuance {
+    type Encoder<'e> = AssetIssuanceEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AssetIssuanceEncoder::new(Encoder4::new(
+            ArrayRefEncoder::without_length_prefix(self.asset_blinding_nonce.as_ref()),
+            ArrayRefEncoder::without_length_prefix(&self.asset_entropy),
+            self.amount.encoder(),
+            self.inflation_keys.encoder(),
+        ))
+    }
+}
+
+encoder_newtype_exact! {
+    /// Encoder for the [`TxIn`] type.
+    #[derive(Clone, Debug)]
+    pub struct TxInEncoder<'e>(Encoder4<
+        OutPointEncoder<'e>,
+        crate::script::ScriptEncoder<'e>,
+        SequenceEncoder<'e>,
+        Option<AssetIssuanceEncoder<'e>>,
+    >);
+}
+
+impl Encode for TxIn {
+    type Encoder<'e> = TxInEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        TxInEncoder::new(Encoder4::new(
+            OutPointEncoder::from_txin(self),
+            self.script_sig.encoder(),
+            self.sequence.encoder(),
+            self.has_issuance().then(|| self.asset_issuance.encoder()),
+        ))
+    }
+}
 
 encoder_newtype_exact! {
     /// Encoder for the [`TxOutWitness`] type.

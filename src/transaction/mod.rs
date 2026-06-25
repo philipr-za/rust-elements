@@ -39,8 +39,8 @@ use secp256k1_zkp::{
     Tweak, ZERO_TWEAK,
 };
 
-pub use self::decoders::{TxOutDecoder, TxOutDecoderError, TxOutWitnessDecoder, TxOutWitnessDecoderError};
-pub use self::encoders::{TxOutEncoder, TxOutWitnessEncoder};
+pub use self::decoders::{AssetIssuanceDecoder, AssetIssuanceDecoderError, SequenceDecoder, SequenceDecoderError, TxInDecoder, TxInDecoderError, TxOutDecoder, TxOutDecoderError, TxOutWitnessDecoder, TxOutWitnessDecoderError};
+pub use self::encoders::{AssetIssuanceEncoder, SequenceEncoder, TxInEncoder, TxOutEncoder, TxOutWitnessEncoder};
 pub use self::pegin_witness::{
     PeginData, PeginDataDecoder, PeginDataEncoder,
     PeginWitness, PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder};
@@ -366,7 +366,6 @@ impl std::error::Error for RelativeLockTimeError {
         }
     }
 }
-
 
 /// Transaction input witness
 #[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
