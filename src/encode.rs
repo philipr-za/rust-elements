@@ -29,9 +29,21 @@ pub use bitcoin::{self, consensus::encode::MAX_VEC_SIZE};
 
 use crate::taproot::TapLeafHash;
 
-struct ByteCounter<W> {
+/// Adaptor to count bytes, used to implement Encodable/Decodable
+/// in terms of the new Encode/Decode traits.
+pub(crate) struct ByteCounter<W> {
     inner: W,
     count: usize,
+}
+
+impl<W> ByteCounter<W> {
+    pub(crate) fn new(inner: W) -> Self {
+        Self { inner, count: 0 }
+    }
+
+    pub(crate) fn into_count(self) -> usize {
+        self.count
+    }
 }
 
 impl<W> io::Write for ByteCounter<W>
@@ -84,7 +96,9 @@ pub enum Error {
     BadLockTime(crate::LockTime),
     /// `VarInt` was encoded in a non-minimal way.
     NonMinimalVarInt,
-    /// Error decoding a transaction witness.
+    /// Error decoding a pegin witness.
+    PeginWitness(crate::PeginWitnessDecoderError),
+    /// Error decoding a script witness.
     Witness(crate::WitnessDecoderError),
 }
 
@@ -113,7 +127,8 @@ impl fmt::Display for Error {
             Error::HexVariableError(ref e) => write!(f, "Hex variable error: {}", e),
             Error::BadLockTime(ref lt) => write!(f, "Invalid locktime {}", lt),
             Error::NonMinimalVarInt => write!(f, "non-minimal varint"),
-            Self::Witness(..) => f.write_str("error decoding witness"),
+            Self::PeginWitness(..) => f.write_str("error decoding pegin witness"),
+            Self::Witness(..) => f.write_str("error decoding script witness"),
         }
     }
 }
@@ -122,6 +137,7 @@ impl error::Error for Error {
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             Error::Secp256k1zkp(ref e) => Some(e),
+            Self::PeginWitness(ref e) => Some(e),
             Self::Witness(ref e) => Some(e),
             _ => None,
         }
@@ -267,9 +283,9 @@ impl Decodable for crate::locktime::Time {
 
 impl Encodable for crate::Witness {
     fn consensus_encode<W: io::Write>(&self, e: W) -> Result<usize, Error> {
-        let mut counter = ByteCounter { inner: e, count: 0 };
+        let mut counter = ByteCounter::new(e);
         crate::encoding::encode_to_writer(self, &mut counter)?;
-        Ok(counter.count)
+        Ok(counter.into_count())
     }
 }
 

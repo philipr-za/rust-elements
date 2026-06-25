@@ -68,7 +68,7 @@ impl_pset_de_serialize!(crate::Sequence);
 impl_pset_de_serialize!(crate::locktime::Height);
 impl_pset_de_serialize!(crate::locktime::Time);
 impl_pset_de_serialize!([u8; 32]);
-impl_pset_de_serialize!(Vec<Vec<u8>>); // peginWitness
+impl_pset_de_serialize!(crate::PeginWitness); // peginWitness
 impl_pset_de_serialize!(crate::Witness); // scriptWitness
 impl_pset_hash_de_serialize!(Txid);
 impl_pset_hash_de_serialize!(ripemd160::Hash);

@@ -15,6 +15,7 @@
 //! # Transactions
 //!
 
+mod pegin_witness;
 mod witness;
 
 use std::{io, fmt, str, cmp};
@@ -23,7 +24,6 @@ use std::convert::TryFrom;
 
 use bitcoin::{self, VarInt};
 use bitcoin::hashes::Hash as _;
-use internals::slice::SliceExt;
 use crate::hashes::{sha256d, HashEngine as _};
 
 use crate::{confidential, ContractHash};
@@ -37,6 +37,9 @@ use secp256k1_zkp::{
     Tweak, ZERO_TWEAK,
 };
 
+pub use self::pegin_witness::{
+    PeginData, PeginDataDecoder, PeginDataEncoder,
+    PeginWitness, PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder};
 pub use self::witness::{Witness, WitnessDecoder, WitnessDecoderError, WitnessEncoder};
 
 /// Description of an asset issuance in a transaction input
@@ -371,7 +374,7 @@ pub struct TxInWitness {
     /// Traditional script witness
     pub script_witness: Witness,
     /// Pegin witness, basically the same thing
-    pub pegin_witness: Vec<Vec<u8>>,
+    pub pegin_witness: PeginWitness,
 }
 impl_consensus_encoding!(TxInWitness, amount_rangeproof, inflation_keys_rangeproof, script_witness, pegin_witness);
 
@@ -382,7 +385,7 @@ impl TxInWitness {
             amount_rangeproof: RangeProof::EMPTY,
             inflation_keys_rangeproof: RangeProof::EMPTY,
             script_witness: Witness::new(),
-            pegin_witness: Vec::new(),
+            pegin_witness: PeginWitness::EMPTY,
         }
     }
 
@@ -398,84 +401,6 @@ impl TxInWitness {
 impl Default for TxInWitness {
     fn default() -> Self {
         Self::empty()
-    }
-}
-
-
-/// Parsed data from a transaction input's pegin witness
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub struct PeginData<'tx> {
-    /// Reference to the pegin output on the mainchain
-    pub outpoint: bitcoin::OutPoint,
-    /// The value, in satoshis, of the pegin
-    pub value: u64,
-    /// Asset type being pegged in
-    pub asset: AssetId,
-    /// Hash of genesis block of originating blockchain
-    pub genesis_hash: bitcoin::BlockHash,
-    /// The claim script that we should hash to tweak our address. Unparsed
-    /// to avoid unnecessary allocation and copying. Typical use is simply
-    /// to feed it raw into a hash function.
-    pub claim_script: &'tx [u8],
-    /// Mainchain transaction; not parsed to save time/memory since the
-    /// parsed transaction is typically not useful without auxiliary
-    /// data (e.g. knowing how to compute pegin addresses for the
-    /// sidechain).
-    pub tx: &'tx [u8],
-    /// Merkle proof of transaction inclusion; also not parsed
-    pub merkle_proof: &'tx [u8],
-    /// The Bitcoin block that the pegin output appears in; scraped
-    /// from the transaction inclusion proof
-    pub referenced_block: bitcoin::BlockHash,
-}
-
-impl<'tx> PeginData<'tx> {
-    /// Construct the pegin data from a pegin witness.
-    /// Returns None if not a valid pegin witness.
-    pub fn from_pegin_witness(
-        pegin_witness: &'tx [Vec<u8>],
-        prevout: bitcoin::OutPoint,
-    ) -> Result<PeginData<'tx>, &'static str> {
-        let Ok(pegin_witness) = <&[Vec<u8>; 6]>::try_from(pegin_witness)  else {
-            return Err("size not 6");
-        };
-        let Some((block_header, _)) = SliceExt::split_first_chunk::<80>(pegin_witness[5].as_slice()) else {
-            return Err("merkle proof too short");
-        };
-
-        Ok(PeginData {
-            outpoint: prevout,
-            value: bitcoin::consensus::deserialize(&pegin_witness[0]).map_err(|_| "invalid value")?,
-            asset: encode::deserialize(&pegin_witness[1]).map_err(|_| "invalid asset")?,
-            genesis_hash: bitcoin::consensus::deserialize(&pegin_witness[2])
-                .map_err(|_| "invalid genesis hash")?,
-            claim_script: &pegin_witness[3],
-            tx: &pegin_witness[4],
-            merkle_proof: &pegin_witness[5],
-            referenced_block: bitcoin::BlockHash::hash(block_header),
-        })
-    }
-
-    /// Construct a pegin witness from the pegin data.
-    pub fn to_pegin_witness(&self) -> Vec<Vec<u8>> {
-        vec![
-            bitcoin::consensus::serialize(&self.value),
-            encode::serialize(&self.asset),
-            bitcoin::consensus::serialize(&self.genesis_hash),
-            self.claim_script.to_vec(),
-            self.tx.to_vec(),
-            self.merkle_proof.to_vec(),
-        ]
-    }
-
-    /// Parse the mainchain tx provided as pegin data.
-    pub fn parse_tx(&self) -> Result<bitcoin::Transaction, bitcoin::consensus::encode::Error> {
-        bitcoin::consensus::encode::deserialize(self.tx)
-    }
-
-    /// Parse the merkle inclusion proof provided as pegin data.
-    pub fn parse_merkle_proof(&self) -> Result<bitcoin::MerkleBlock, bitcoin::consensus::encode::Error> {
-        bitcoin::consensus::encode::deserialize(self.merkle_proof)
     }
 }
 
@@ -603,10 +528,8 @@ impl TxIn {
     /// Extracts witness data from a pegin. Will return `None` if any data
     /// cannot be parsed. The combination of `is_pegin()` returning `true`
     /// and `pegin_data()` returning `None` indicates an invalid transaction.
-    pub fn pegin_data(&self) -> Option<PeginData<'_>> {
-        self.pegin_prevout().and_then(|p| {
-            PeginData::from_pegin_witness(&self.witness.pegin_witness, p).ok()
-        })
+    pub fn pegin_data(&self) -> Option<&PeginData> {
+        self.witness.pegin_witness.data()
     }
 
     /// Helper to determine whether an input has an asset issuance attached
@@ -961,11 +884,7 @@ impl Transaction {
                     VarInt(wit.len() as u64).size() +
                     wit.len()
                 ).sum::<usize>() +
-                VarInt(input.witness.pegin_witness.len() as u64).size() +
-                input.witness.pegin_witness.iter().map(|wit|
-                    VarInt(wit.len() as u64).size() +
-                    wit.len()
-                ).sum::<usize>()
+                input.witness.pegin_witness.encoded_size()
             } else {
                 0
             }
@@ -1654,24 +1573,18 @@ mod tests {
         assert_eq!(tx.input[0].witness.pegin_witness.len(), 6);
         assert_eq!(
             tx.input[0].pegin_data(),
-            Some(super::PeginData {
-                outpoint: bitcoin::OutPoint {
-                    txid: bitcoin::Txid::from_str(
-                        "c9d88eb5130365deed045eab11cfd3eea5ba32ad45fa2e156ae6ead5f1fce93f",
-                    ).unwrap(),
-                    vout: 0,
-                },
+            Some(&super::PeginData {
                 value: 100_000_000,
-                asset: tx.output[0].asset.explicit().unwrap(),
+                asset_id: tx.output[0].asset.explicit().unwrap(),
                 genesis_hash: bitcoin::BlockHash::from_str(
                     "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"
                 ).unwrap(),
-                claim_script: &[
+                claim_script: bitcoin::ScriptBuf::from(vec![
                     0x00, 0x14, 0x1a, 0xb7, 0xf5, 0x99, 0x5c, 0xf0,
                     0xdf, 0xcb, 0x90, 0xcb, 0xb0, 0x2b, 0x63, 0x39,
                     0x7e, 0x53, 0x26, 0xea, 0xe6, 0xfe,
-                ],
-                tx: &[
+                ]),
+                transaction: vec![
                     0x02, 0x00, 0x00, 0x00, 0x01, 0x13, 0x24, 0x4f,
                     0xa5, 0x9f, 0xcb, 0x40, 0x71, 0x24, 0x03, 0x8f,
                     0xf9, 0x12, 0x1e, 0xd5, 0x46, 0xf6, 0xdc, 0x21,
@@ -1697,7 +1610,7 @@ mod tests {
                     0xfc, 0x1f, 0xc8, 0xf1, 0xa4, 0x95, 0xaf, 0xfa,
                     0x88, 0xac, 0xf4, 0x01, 0x00, 0x00,
                 ],
-                merkle_proof: &[
+                merkle_proof: vec![
                     0x00, 0x00, 0x00, 0x20, 0xa0, 0x60, 0x08, 0x6a,
                     0xf9, 0x2a, 0xc3, 0x4d, 0xbb, 0xc8, 0xbd, 0x89,
                     0xbb, 0xbe, 0x03, 0xef, 0x7e, 0x00, 0x16, 0x93,
@@ -1729,7 +1642,7 @@ mod tests {
         );
         assert_eq!(
             tx.input[0].witness.pegin_witness,
-            tx.input[0].pegin_data().unwrap().to_pegin_witness(),
+            PeginWitness::new(tx.input[0].pegin_data().unwrap().clone()),
         );
 
         assert_eq!(tx.output.len(), 2);
@@ -2386,19 +2299,13 @@ mod tests {
 
     #[test]
     fn malformed_pegin() {
-        let mut input: TxIn = hex_deserialize!("\
-            0004000000000000ffffffff0000040000c0c0c0c0c0c0c0c0c0000000000000\
-            00805555555555555505c0c0c0c0c03fc0c0c0c0c0c0c0c0c0c0c0c00200ff01\
-            0000000000fd0000000000000000010000000000ffffffffffffffff00000000\
-            000000ff000000000000010000000000000000000001002d342d35313700\
-        ");
-        input.witness = hex_deserialize!("\
+        let wit = hex::decode_to_vec("\
             0000000608202020202020202020202020202020202020202020202020202020\
             2020202020202020202020202020202020202020202020202020202020202020\
             2020202020202020202020202020202020202020202020202020202020200000\
             00000000000000000000000000000002000400000000\
-        ");
-        assert!(input.pegin_data().is_none());
+        ").unwrap();
+        assert!(TxInWitness::consensus_decode(&wit[..]).is_err());
     }
 
     #[test]

@@ -32,7 +32,7 @@ use crate::pset::raw;
 use crate::pset::serialize;
 use crate::pset::{self, error, Error};
 use crate::{transaction::SighashTypeParseError, SchnorrSighashType};
-use crate::{AssetIssuance, BlockHash, EcdsaSighashType, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
+use crate::{AssetIssuance, BlockHash, EcdsaSighashType, PeginWitness, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
 use secp256k1_zkp::{self, Tweak, ZERO_TWEAK};
@@ -252,7 +252,7 @@ pub struct Input {
     /// Pegin Value
     pub pegin_value: Option<u64>,
     /// Pegin Witness
-    pub pegin_witness: Option<Vec<Vec<u8>>>,
+    pub pegin_witness: Option<PeginWitness>,
     /// Issuance inflation keys
     pub issuance_inflation_keys: Option<u64>,
     /// Issuance inflation keys commitment
@@ -743,7 +743,7 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.pegin_value <= <raw_key: _> | <raw_value : u64>);
                         }
                         PSBT_ELEMENTS_IN_PEG_IN_WITNESS => {
-                            impl_pset_prop_insert_pair!(self.pegin_witness <= <raw_key: _> | <raw_value : Vec<Vec<u8>>>);
+                            impl_pset_prop_insert_pair!(self.pegin_witness <= <raw_key: _> | <raw_value : PeginWitness>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS => {
                             impl_pset_prop_insert_pair!(self.issuance_inflation_keys <= <raw_key: _> | <raw_value : u64>);

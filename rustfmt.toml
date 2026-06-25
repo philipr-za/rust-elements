@@ -2,6 +2,7 @@ ignore = [
     "/",
     "!/src/lib.rs",
     "!/src/confidential/*.rs",
+    "!/src/transaction/pegin_witness.rs"
 ]
 hard_tabs = false
 tab_spaces = 4
