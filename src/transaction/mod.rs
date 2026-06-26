@@ -39,8 +39,8 @@ use secp256k1_zkp::{
     Tweak, ZERO_TWEAK,
 };
 
-pub use self::decoders::{TxOutDecoder, TxOutDecoderError};
-pub use self::encoders::TxOutEncoder;
+pub use self::decoders::{TxOutDecoder, TxOutDecoderError, TxOutWitnessDecoder, TxOutWitnessDecoderError};
+pub use self::encoders::{TxOutEncoder, TxOutWitnessEncoder};
 pub use self::pegin_witness::{
     PeginData, PeginDataDecoder, PeginDataEncoder,
     PeginWitness, PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder};
