@@ -10,10 +10,12 @@ use core::fmt;
 use super::{
     AssetIssuance, OutPoint, Script, Sequence, TxIn, TxInWitness, TxOut, TxOutWitness, Txid,
 };
+use crate::confidential::{RangeProofDecoder, RangeProofDecoderError};
 use crate::encoding::{
     ArrayDecoder, Decode, Decoder, Decoder2, Decoder2Error, Decoder3, Decoder4, Decoder4Error,
     DecoderStatus, UnexpectedEofError,
 };
+use crate::{PeginWitnessDecoder, PeginWitnessDecoderError, WitnessDecoder, WitnessDecoderError};
 
 /// Decoder for the [`OutPoint`] type.
 ///
@@ -220,6 +222,113 @@ impl std::error::Error for TxInDecoderError {
             Inner::AssetIssuance(ref e) => Some(e),
             Inner::SuperfluousIssuance => None,
         }
+    }
+}
+
+/// Decoder for the [`TxInWitness`] type.
+#[derive(Default)]
+pub struct TxInWitnessDecoder {
+    inner: Decoder4<RangeProofDecoder, RangeProofDecoder, WitnessDecoder, PeginWitnessDecoder>,
+}
+
+/// Decoder error for the [`TxInWitness`] type.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct TxInWitnessDecoderError(
+    Decoder4Error<
+        RangeProofDecoderError,
+        RangeProofDecoderError,
+        WitnessDecoderError,
+        PeginWitnessDecoderError,
+    >,
+);
+
+impl fmt::Display for TxInWitnessDecoderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("error decoding transaction input witness")
+    }
+}
+
+impl std::error::Error for TxInWitnessDecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { Some(&self.0) }
+}
+
+impl Decoder for TxInWitnessDecoder {
+    type Output = TxInWitness;
+    type Error = TxInWitnessDecoderError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        self.inner.push_bytes(bytes).map_err(TxInWitnessDecoderError)
+    }
+
+    fn end(self) -> Result<Self::Output, Self::Error> {
+        let (amount_rangeproof, inflation_keys_rangeproof, script_witness, pegin_witness) =
+            self.inner.end().map_err(TxInWitnessDecoderError)?;
+
+        Ok(TxInWitness {
+            amount_rangeproof,
+            inflation_keys_rangeproof,
+            script_witness,
+            pegin_witness,
+        })
+    }
+
+    fn read_limit(&self) -> usize { self.inner.read_limit() }
+}
+
+impl Decode for TxInWitness {
+    type Decoder = TxInWitnessDecoder;
+}
+
+/// An decoder for the witnesses in a sequence of [`TxIn`]s.
+///
+/// Comsumes a vec of [`TxIn`]s on construction and then yields that
+/// same vector, with the witness fields overwritten.
+#[derive(Default)]
+struct TxInWitnessesDecoder {
+    txins: Vec<TxIn>,
+    index: usize,
+    // Invariant: if this is Some then
+    decoder: Option<TxInWitnessDecoder>,
+}
+
+impl TxInWitnessesDecoder {
+    #[allow(dead_code)] // will be used in the Transaction Encode/Decode commit
+    fn new(txins: Vec<TxIn>) -> Self { Self { txins, index: 0, decoder: None } }
+}
+
+impl Decoder for TxInWitnessesDecoder {
+    type Output = Vec<TxIn>;
+    type Error = TxInWitnessDecoderError;
+
+    fn push_bytes(&mut self, bytes: &mut &[u8]) -> Result<DecoderStatus, Self::Error> {
+        loop {
+            let Some(next_txin) = self.txins.get_mut(self.index) else {
+                return Ok(DecoderStatus::Ready);
+            };
+
+            let mut decoder = self.decoder.take().unwrap_or_else(TxInWitness::decoder);
+            if decoder.push_bytes(bytes)?.needs_more() {
+                self.decoder = Some(decoder);
+                return Ok(DecoderStatus::NeedsMore);
+            }
+            next_txin.witness = decoder.end()?;
+            self.index += 1;
+        }
+    }
+
+    fn end(mut self) -> Result<Self::Output, Self::Error> {
+        loop {
+            let Some(last_txin) = self.txins.get_mut(self.index) else {
+                return Ok(self.txins);
+            };
+
+            last_txin.witness = self.decoder.take().unwrap_or_else(TxInWitness::decoder).end()?;
+            self.index += 1;
+        }
+    }
+
+    fn read_limit(&self) -> usize {
+        self.decoder.as_ref().map_or(0, TxInWitnessDecoder::read_limit)
     }
 }
 

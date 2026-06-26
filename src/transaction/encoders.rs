@@ -5,11 +5,13 @@
 //! These are encapsulated because there are many of them, but in the end we
 //! only expose the top-level ones outside of this module.
 
-use super::{AssetIssuance, Sequence, TxIn, TxOut, TxOutWitness};
+use super::{AssetIssuance, Sequence, TxIn, TxInWitness, TxOut, TxOutWitness};
+use crate::confidential::RangeProofEncoder;
 use crate::encoding::{
     encoder_newtype_exact, ArrayEncoder, ArrayRefEncoder, Encode, Encoder, Encoder2, Encoder4,
     EncoderStatus,
 };
+use crate::{PeginWitnessEncoder, WitnessEncoder};
 
 // While we define an [`OutPointEncoder`] struct, we don't actually implement `Encode` or `Decode`
 // for [`OutPoint`], since the outpoint encoding depends on pegin/issuance data from the rest of
@@ -78,6 +80,73 @@ impl Encode for AssetIssuance {
             self.amount.encoder(),
             self.inflation_keys.encoder(),
         ))
+    }
+}
+
+encoder_newtype_exact! {
+    /// Encoder for the [`TxInWitness`] type.
+    #[derive(Clone, Debug)]
+    pub struct TxInWitnessEncoder<'e>(Encoder4<
+        RangeProofEncoder<'e>,
+        RangeProofEncoder<'e>,
+        WitnessEncoder<'e>,
+        PeginWitnessEncoder<'e>,
+    >);
+}
+
+impl Encode for TxInWitness {
+    type Encoder<'e> = TxInWitnessEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        TxInWitnessEncoder::new(Encoder4::new(
+            self.amount_rangeproof.encoder(),
+            self.inflation_keys_rangeproof.encoder(),
+            self.script_witness.encoder(),
+            self.pegin_witness.encoder(),
+        ))
+    }
+}
+
+/// An encoder for the witnesses in a sequence of [`TxIn`]s.
+#[derive(Clone, Debug)]
+struct TxInWitnessesEncoder<'e> {
+    txins: &'e [TxIn],
+    cur_enc: Option<TxInWitnessEncoder<'e>>,
+}
+
+impl<'e> TxInWitnessesEncoder<'e> {
+    #[allow(dead_code)] // will be used in the Transaction Encode/Decode commit
+    fn new(txins: &'e [TxIn]) -> Self {
+        Self { txins, cur_enc: txins.first().map(|txin| txin.witness.encoder()) }
+    }
+}
+
+impl Encoder for TxInWitnessesEncoder<'_> {
+    fn current_chunk(&self) -> &[u8] {
+        self.cur_enc.as_ref().map(Encoder::current_chunk).unwrap_or_default()
+    }
+
+    fn advance(&mut self) -> EncoderStatus {
+        let Some(cur) = self.cur_enc.as_mut() else {
+            return EncoderStatus::Finished;
+        };
+
+        loop {
+            if cur.advance().has_more() {
+                return EncoderStatus::HasMore;
+            }
+            // self.inputs guaranteed to be non-empty if cur_enc is non-None.
+            self.txins = &self.txins[1..];
+            if let Some(txin) = self.txins.first() {
+                *cur = txin.witness.encoder();
+                if !cur.current_chunk().is_empty() {
+                    return EncoderStatus::HasMore;
+                }
+            } else {
+                self.cur_enc = None;
+                return EncoderStatus::Finished;
+            }
+        }
     }
 }
 

@@ -99,9 +99,10 @@ pub use crate::transaction::{
     EcdsaSighashType, OutPoint, PeginData, PeginDataDecoder, PeginDataEncoder, PeginWitness,
     PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder, PegoutData, Sequence,
     SequenceDecoder, SequenceDecoderError, SequenceEncoder, Transaction, TxIn, TxInDecoder,
-    TxInDecoderError, TxInEncoder, TxInWitness, TxOut, TxOutDecoder, TxOutDecoderError,
-    TxOutEncoder, TxOutWitness, TxOutWitnessDecoder, TxOutWitnessDecoderError, TxOutWitnessEncoder,
-    Witness, WitnessDecoder, WitnessDecoderError, WitnessEncoder,
+    TxInDecoderError, TxInEncoder, TxInWitness, TxInWitnessDecoder, TxInWitnessDecoderError,
+    TxInWitnessEncoder, TxOut, TxOutDecoder, TxOutDecoderError, TxOutEncoder, TxOutWitness,
+    TxOutWitnessDecoder, TxOutWitnessDecoderError, TxOutWitnessEncoder, Witness, WitnessDecoder,
+    WitnessDecoderError, WitnessEncoder,
 };
 
 // Encode a compact size to a slice without allocating
