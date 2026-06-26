@@ -66,7 +66,6 @@ pub const LOCK_TIME_THRESHOLD: u32 = 500_000_000;
 /// ```
 #[allow(clippy::derive_ord_xor_partial_ord)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LockTime {
     /// A block height lock time value.
     ///
@@ -292,7 +291,6 @@ impl Decodable for LockTime {
 
 /// An absolute block height, guaranteed to always contain a valid height value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Height(u32);
 
 impl Height {
@@ -377,7 +375,6 @@ impl TryFrom<String> for Height {
 /// `to_consensus_u32()`. Said another way, `Time(x)` means 'x seconds since epoch' _not_ '(x -
 /// threshold) seconds since epoch'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Time(u32);
 
 impl Time {
