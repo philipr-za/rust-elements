@@ -22,6 +22,7 @@ use std::cmp::{PartialOrd, Ordering};
 use std::convert::TryFrom;
 use std::str::FromStr;
 use std::io::{Read, Write};
+use crate::encoding;
 use crate::error::ParseIntError;
 use crate::parse;
 
@@ -270,6 +271,36 @@ impl fmt::Display for LockTime {
                 Self::Blocks(ref h) => fmt::Display::fmt(h, f),
                 Self::Seconds(ref t) => fmt::Display::fmt(t, f),
             }
+        }
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`LockTime`] type.
+    pub struct LockTimeEncoder<'e>(encoding::ArrayEncoder<4>);
+}
+
+impl encoding::Encode for LockTime {
+    type Encoder<'e> = LockTimeEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        LockTimeEncoder::new(encoding::ArrayEncoder::without_length_prefix(self.to_consensus_u32().to_le_bytes()))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`LockTime`] type.
+    #[derive(Default)]
+    pub struct LockTimeDecoder(encoding::ArrayDecoder<4>);
+
+    /// Decoder error for the [`LockTime`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct LockTimeDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "failed to decode locktime";
+
+    impl Decode for LockTime {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(LockTime::from_consensus(u32::from_le_bytes(bytes)))
         }
     }
 }

@@ -8,13 +8,15 @@
 use core::fmt;
 
 use super::{
-    AssetIssuance, OutPoint, Script, Sequence, TxIn, TxInWitness, TxOut, TxOutWitness, Txid,
+    AssetIssuance, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness,
+    Txid,
 };
 use crate::confidential::{RangeProofDecoder, RangeProofDecoderError};
 use crate::encoding::{
     ArrayDecoder, Decode, Decoder, Decoder2, Decoder2Error, Decoder3, Decoder4, Decoder4Error,
-    DecoderStatus, UnexpectedEofError,
+    DecoderStatus, UnexpectedEofError, VecDecoder,
 };
+use crate::locktime::{LockTime, LockTimeDecoder};
 use crate::{PeginWitnessDecoder, PeginWitnessDecoderError, WitnessDecoder, WitnessDecoderError};
 
 /// Decoder for the [`OutPoint`] type.
@@ -130,9 +132,6 @@ impl std::error::Error for AssetIssuanceDecoderError {
     }
 }
 
-fn vout_is_pegin(vout: u32) -> bool { vout != 0xffff_ffff && vout & (1 << 30) != 0 }
-fn vout_has_issuance(vout: u32) -> bool { vout != 0xffff_ffff && vout & (1 << 31) != 0 }
-
 decoder_state_machine! {
     /// Decoder for the [`TxIn`] type.
     pub struct TxInDecoder(enum TxInDecoderInner {
@@ -146,17 +145,25 @@ decoder_state_machine! {
             >,
             => transition_initial(output, ...) -> Result {
                 let (mut outpoint, script_sig, sequence) = output;
-                if vout_has_issuance(outpoint.vout) {
+                let (is_pegin, has_issuance) = if outpoint.vout == 0xffff_ffff {
+                    (false, false)
+                } else {
+                    let vout = outpoint.vout;
+                    outpoint.vout &= !((1 << 30) | (1 << 31));
+                    (vout & (1 << 30) != 0, vout & (1 << 31) != 0)
+                };
+                if has_issuance {
                     Ok(TxInDecoderInner::AssetIssuance {
                         decoder: AssetIssuanceDecoder::default(),
-                        outpoint, script_sig, sequence,
+                        outpoint, script_sig, sequence, is_pegin,
                     })
                 } else {
-                    let orig_vout = outpoint.vout;
-                    outpoint.vout &= !((1 << 30) | (1 << 31));
+                    if outpoint.vout != 0xffff_ffff {
+                        outpoint.vout &= !((1 << 30) | (1 << 31));
+                    }
                     Ok(TxInDecoderInner::Done(TxIn {
                         previous_output: outpoint,
-                        is_pegin: vout_is_pegin(orig_vout),
+                        is_pegin,
                         script_sig,
                         sequence,
                         asset_issuance: AssetIssuance::null(),
@@ -169,18 +176,16 @@ decoder_state_machine! {
             decoder: AssetIssuanceDecoder,
             outpoint: OutPoint,
             script_sig: Script,
-            sequence: Sequence
+            sequence: Sequence,
+            is_pegin: bool
             => transition_asset_issuance(asset_issuance, ...) -> Result {
                 if asset_issuance.is_null() {
                     return Err(TxInDecoderErrorInner::SuperfluousIssuance);
                 }
 
-                let orig_vout = outpoint.vout;
-                let mut outpoint = outpoint;
-                outpoint.vout &= !((1 << 30) | (1 << 31));
                 Ok(TxInDecoderInner::Done(TxIn {
                     previous_output: outpoint,
-                    is_pegin: vout_is_pegin(orig_vout),
+                    is_pegin,
                     script_sig,
                     sequence,
                     asset_issuance,
@@ -292,7 +297,6 @@ struct TxInWitnessesDecoder {
 }
 
 impl TxInWitnessesDecoder {
-    #[allow(dead_code)] // will be used in the Transaction Encode/Decode commit
     fn new(txins: Vec<TxIn>) -> Self { Self { txins, index: 0, decoder: None } }
 }
 
@@ -369,7 +373,6 @@ struct TxOutWitnessesDecoder {
 }
 
 impl TxOutWitnessesDecoder {
-    #[allow(dead_code)] // will be used in the Transaction Encode/Decode commit
     fn new(txouts: Vec<TxOut>) -> Self { Self { txouts, index: 0, decoder: None } }
 }
 
@@ -434,6 +437,110 @@ decoder_newtype! {
         fn convert_inner(output) -> Result<_, TxOutDecoderErrorInner> {
             let (asset, value, nonce, script_pubkey) = output;
             Ok(TxOut { asset, value, nonce, script_pubkey, witness: TxOutWitness::empty() })
+        }
+    }
+}
+
+decoder_state_machine! {
+    /// Decoder for the [`Transaction`] type.
+    pub struct TransactionDecoder(enum TransactionDecoderInner {
+        Done(Transaction),
+        Errored,
+        DecodingNonWitness {
+            decoder: Decoder4<
+                ArrayDecoder<4>,
+                ArrayDecoder<1>,
+                Decoder2<
+                    VecDecoder<TxIn>,
+                    VecDecoder<TxOut>,
+                >,
+                LockTimeDecoder,
+            >,
+            => transition_non_witness(output, ...) -> Result {
+                let (version, wit_flag, (input, output), lock_time) = output;
+                match wit_flag {
+                    [0] => Ok(TransactionDecoderInner::Done(Transaction {
+                        version: u32::from_le_bytes(version),
+                        lock_time,
+                        input,
+                        output,
+                    })),
+                    [1] => Ok(TransactionDecoderInner::DecodingWitnesses {
+                        decoder: Decoder2::new(
+                            TxInWitnessesDecoder::new(input),
+                            TxOutWitnessesDecoder::new(output),
+                        ),
+                        version: u32::from_le_bytes(version),
+                        lock_time,
+                    }),
+                    [x] => Err(TransactionDecoderErrorInner::InvalidWitnessFlag(x)),
+                }
+            }
+        },
+        DecodingWitnesses {
+            decoder: Decoder2<
+                TxInWitnessesDecoder,
+                TxOutWitnessesDecoder,
+            >,
+            version: u32,
+            lock_time: LockTime
+            => transition_witnesses(output, ...) -> Result {
+                let (input, output) = output;
+                if input.iter().all(|input| input.witness.is_empty()) &&
+                    output.iter().all(|output| output.witness.is_empty()) {
+                    Err(TransactionDecoderErrorInner::NoWitnesses)
+                } else {
+                    Ok(TransactionDecoderInner::Done(Transaction {
+                        version,
+                        lock_time,
+                        input,
+                        output,
+                    }))
+                }
+            }
+        },
+    });
+
+    /// Decoder error for the [`Transaction`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct TransactionDecoderError(enum TransactionDecoderErrorInner {
+        [macro-inserted decoder variants]
+        InvalidWitnessFlag(u8),
+        NoWitnesses,
+    });
+}
+
+impl Default for TransactionDecoder {
+    fn default() -> Self {
+        Self(TransactionDecoderInner::DecodingNonWitness { decoder: Decoder4::default() })
+    }
+}
+
+impl fmt::Display for TransactionDecoderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TransactionDecoderErrorInner as Inner;
+
+        match self.0 {
+            Inner::DecodingNonWitness(..) =>
+                f.write_str("failed to decode non-witness part of transaction"),
+            Inner::DecodingWitnesses(..) => f.write_str("failed to decode transaction witnesses"),
+            Inner::InvalidWitnessFlag(flag) => {
+                write!(f, "invalid witness flag {flag} (must be 0 or 1)")
+            }
+            Inner::NoWitnesses => f.write_str("witness flag set but all witnesses were empty"),
+        }
+    }
+}
+
+impl std::error::Error for TransactionDecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use TransactionDecoderErrorInner as Inner;
+
+        match self.0 {
+            Inner::DecodingNonWitness(ref e) => Some(e),
+            Inner::DecodingWitnesses(ref e) => Some(e),
+            Inner::InvalidWitnessFlag(_) => None,
+            Inner::NoWitnesses => None,
         }
     }
 }

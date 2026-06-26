@@ -39,8 +39,8 @@ use secp256k1_zkp::{
     Tweak, ZERO_TWEAK,
 };
 
-pub use self::decoders::{AssetIssuanceDecoder, AssetIssuanceDecoderError, SequenceDecoder, SequenceDecoderError, TxInDecoder, TxInDecoderError, TxInWitnessDecoder, TxInWitnessDecoderError, TxOutDecoder, TxOutDecoderError, TxOutWitnessDecoder, TxOutWitnessDecoderError};
-pub use self::encoders::{AssetIssuanceEncoder, SequenceEncoder, TxInEncoder, TxInWitnessEncoder, TxOutEncoder, TxOutWitnessEncoder};
+pub use self::decoders::{AssetIssuanceDecoder, AssetIssuanceDecoderError, SequenceDecoder, SequenceDecoderError, TransactionDecoder, TransactionDecoderError, TxInDecoder, TxInDecoderError, TxInWitnessDecoder, TxInWitnessDecoderError, TxOutDecoder, TxOutDecoderError, TxOutWitnessDecoder, TxOutWitnessDecoderError};
+pub use self::encoders::{AssetIssuanceEncoder, SequenceEncoder, TransactionEncoder, TxInEncoder, TxInWitnessEncoder, TxOutEncoder, TxOutWitnessEncoder};
 pub use self::pegin_witness::{
     PeginData, PeginDataDecoder, PeginDataEncoder,
     PeginWitness, PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder};

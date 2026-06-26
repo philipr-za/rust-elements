@@ -5,12 +5,13 @@
 //! These are encapsulated because there are many of them, but in the end we
 //! only expose the top-level ones outside of this module.
 
-use super::{AssetIssuance, Sequence, TxIn, TxInWitness, TxOut, TxOutWitness};
+use super::{AssetIssuance, Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness};
 use crate::confidential::RangeProofEncoder;
 use crate::encoding::{
-    encoder_newtype_exact, ArrayEncoder, ArrayRefEncoder, Encode, Encoder, Encoder2, Encoder4,
-    EncoderStatus,
+    encoder_newtype, encoder_newtype_exact, ArrayEncoder, ArrayRefEncoder, Encode, Encoder,
+    Encoder2, Encoder4, Encoder6, EncoderStatus, PrefixedSliceEncoder,
 };
+use crate::locktime::LockTimeEncoder;
 use crate::{PeginWitnessEncoder, WitnessEncoder};
 
 // While we define an [`OutPointEncoder`] struct, we don't actually implement `Encode` or `Decode`
@@ -115,7 +116,6 @@ struct TxInWitnessesEncoder<'e> {
 }
 
 impl<'e> TxInWitnessesEncoder<'e> {
-    #[allow(dead_code)] // will be used in the Transaction Encode/Decode commit
     fn new(txins: &'e [TxIn]) -> Self {
         Self { txins, cur_enc: txins.first().map(|txin| txin.witness.encoder()) }
     }
@@ -202,7 +202,6 @@ struct TxOutWitnessesEncoder<'e> {
 }
 
 impl<'e> TxOutWitnessesEncoder<'e> {
-    #[allow(dead_code)] // will be used in the Transaction Encode/Decode commit
     fn new(txouts: &'e [TxOut]) -> Self {
         Self { txouts, cur_enc: txouts.first().map(|txout| txout.witness.encoder()) }
     }
@@ -257,6 +256,42 @@ impl Encode for TxOut {
             self.value.encoder(),
             self.nonce.encoder(),
             self.script_pubkey.encoder(),
+        ))
+    }
+}
+
+encoder_newtype! {
+    /// Encoder for the [`Transaction`] type.
+    pub struct TransactionEncoder<'e>(Encoder6<
+        ArrayEncoder<4>,
+        ArrayEncoder<1>,
+        PrefixedSliceEncoder<'e, TxIn>,
+        PrefixedSliceEncoder<'e, TxOut>,
+        LockTimeEncoder<'e>,
+        Option<Encoder2<
+            TxInWitnessesEncoder<'e>,
+            TxOutWitnessesEncoder<'e>,
+        >>
+    >);
+}
+
+impl Encode for Transaction {
+    type Encoder<'e> = TransactionEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        let witness_flag = self.has_witness();
+        TransactionEncoder::new(Encoder6::new(
+            ArrayEncoder::without_length_prefix(self.version.to_le_bytes()),
+            ArrayEncoder::without_length_prefix([u8::from(witness_flag)]),
+            PrefixedSliceEncoder::new(&self.input),
+            PrefixedSliceEncoder::new(&self.output),
+            self.lock_time.encoder(),
+            witness_flag.then(|| {
+                Encoder2::new(
+                    TxInWitnessesEncoder::new(&self.input),
+                    TxOutWitnessesEncoder::new(&self.output),
+                )
+            }),
         ))
     }
 }
