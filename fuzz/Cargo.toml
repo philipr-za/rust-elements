@@ -34,6 +34,13 @@ allowed_duplicates = [
 ]
 
 [[bin]]
+name = "decode_equiv_transaction"
+path = "fuzz_targets/decode_equiv_transaction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "deserialize_block"
 path = "fuzz_targets/deserialize_block.rs"
 test = false
