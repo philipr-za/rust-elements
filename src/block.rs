@@ -217,7 +217,6 @@ pub struct BlockHeader {
     /// Block signature and dynamic federation-related data
     pub ext: ExtData,
 }
-serde_struct_impl!(BlockHeader, version, prev_blockhash, merkle_root, time, height, ext);
 
 impl BlockHeader {
     /// Return the block hash.
