@@ -867,15 +867,6 @@ impl fmt::Display for All {
     }
 }
 
-#[cfg(feature = "serde")]
-impl serde::Serialize for All {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
 
 /// Empty stack is also FALSE
 pub static OP_FALSE: All = all::OP_PUSHBYTES_0;

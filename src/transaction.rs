@@ -371,7 +371,6 @@ pub struct TxInWitness {
     /// Pegin witness, basically the same thing
     pub pegin_witness: Vec<Vec<u8>>,
 }
-serde_struct_impl!(TxInWitness, amount_rangeproof, inflation_keys_rangeproof, script_witness, pegin_witness);
 impl_consensus_encoding!(TxInWitness, amount_rangeproof, inflation_keys_rangeproof, script_witness, pegin_witness);
 
 impl TxInWitness {
@@ -516,8 +515,6 @@ impl Default for TxIn {
     }
 }
 
-serde_struct_impl!(TxIn, previous_output, is_pegin, script_sig, sequence, asset_issuance, witness);
-
 impl Encodable for TxIn {
     fn consensus_encode<S: io::Write>(&self, mut s: S) -> Result<usize, encode::Error> {
         let mut ret = 0;
@@ -653,7 +650,6 @@ pub struct TxOutWitness {
     // allocates on stack even when the range proof is empty
     pub rangeproof: Option<Box<RangeProof>>,
 }
-serde_struct_impl!(TxOutWitness, surjection_proof, rangeproof);
 impl_consensus_encoding!(TxOutWitness, surjection_proof, rangeproof);
 
 impl TxOutWitness {
@@ -718,7 +714,6 @@ pub struct TxOut {
     /// part of the txin.
     pub witness: TxOutWitness,
 }
-serde_struct_impl!(TxOut, asset, value, nonce, script_pubkey, witness);
 
 impl Encodable for TxOut {
     fn consensus_encode<S: io::Write>(&self, mut s: S) -> Result<usize, encode::Error> {
@@ -887,7 +882,6 @@ pub struct Transaction {
     /// Vector of outputs
     pub output: Vec<TxOut>,
 }
-serde_struct_impl!(Transaction, version, lock_time, input, output);
 
 impl Transaction {
     /// Whether the transaction is a coinbase tx

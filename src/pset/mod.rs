@@ -56,7 +56,6 @@ pub use self::map::{Global, GlobalTxData, Input, Output, PsbtSighashType, TapTre
 
 /// A Partially Signed Transaction.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(crate = "actual_serde"))]
 pub struct PartiallySignedTransaction {
     /// The key-value pairs for all global data.
     pub global: Global,
