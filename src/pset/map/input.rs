@@ -1204,3 +1204,51 @@ where
         Entry::Occupied(_) => Err(pset::Error::DuplicateKey(raw_key).into()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use secp256k1_zkp::ZERO_TWEAK;
+
+    use crate::confidential;
+    use crate::pset::PartiallySignedTransaction;
+    use crate::{AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
+
+    // See `pset::map::output::tests::from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs`.
+    // Same principle, but for the asset issuance rangeproofs in the input witnesses.
+    #[test]
+    fn from_tx_does_not_spuriously_set_proofs_on_explicit_issuance() {
+        let txin = TxIn {
+            asset_issuance: AssetIssuance {
+                asset_blinding_nonce: ZERO_TWEAK,
+                asset_entropy: [1u8; 32],
+                amount: confidential::Value::Explicit(1000),
+                inflation_keys: confidential::Value::Null,
+            },
+            witness: TxInWitness::empty(),
+            ..TxIn::default()
+        };
+        assert!(txin.has_issuance());
+        assert!(txin.witness.amount_rangeproof.is_none());
+        assert!(txin.witness.inflation_keys_rangeproof.is_none());
+
+        let tx = Transaction {
+            version: 2,
+            lock_time: LockTime::ZERO,
+            input: vec![txin],
+            output: vec![],
+        };
+
+        let pset = PartiallySignedTransaction::from_tx(tx);
+        let input = &pset.inputs()[0];
+        assert!(
+            input.issuance_value_rangeproof.is_none(),
+            "issuance_value_rangeproof should be None for an explicit issuance, got {:?}",
+            input.issuance_value_rangeproof,
+        );
+        assert!(
+            input.issuance_keys_rangeproof.is_none(),
+            "issuance_keys_rangeproof should be None for an explicit issuance, got {:?}",
+            input.issuance_keys_rangeproof,
+        );
+    }
+}

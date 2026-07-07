@@ -584,3 +584,59 @@ impl Decodable for Output {
         Ok(rv)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::pset::{raw, Map, PartiallySignedTransaction};
+    use crate::{encode, Transaction};
+
+    // Regression test from Claude that the next two commits do not cause
+    // `Pset::from_tx` to insert 0-length proofs when given unblinded outputs.
+    // It should insert no proofs at all.
+    #[test]
+    fn from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs() {
+        // Fully-explicit transaction from `test_pset` in mod.rs
+        let tx_hex = "010000000001715df5ccebaf02ff18d6fae7263fa69fed5de59c900f4749556eba41bc7bf2af0000000000000000000201230f4f5d4b7c6fa845806ee4f67713459e1b69e8e60fcee2e4940c7a0d5de1b2010000000124101100001f5175517551755175517551755175517551755175517551755175517551755101230f4f5d4b7c6fa845806ee4f67713459e1b69e8e60fcee2e4940c7a0d5de1b2010000000005f5e100000000000000";
+        let tx: Transaction =
+            encode::deserialize(&hex::decode_to_vec(tx_hex).unwrap()).unwrap();
+        assert!(tx.output.iter().all(|o| o.witness.is_empty()), "fixture must be unblinded");
+
+        let pset = PartiallySignedTransaction::from_tx(tx);
+        for (i, out) in pset.outputs().iter().enumerate() {
+            assert!(
+                out.value_rangeproof.is_none(),
+                "output {i}: value_rangeproof should be None for an unblinded output, got {:?}",
+                out.value_rangeproof,
+            );
+            assert!(
+                out.asset_surjection_proof.is_none(),
+                "output {i}: asset_surjection_proof should be None for an unblinded output, got {:?}",
+                out.asset_surjection_proof,
+            );
+        }
+
+        // Wire-format check: an unblinded output's key-value pairs must not
+        // include the value-rangeproof / asset-surjection-proof proprietary
+        // keys at all (subtypes 0x04/0x05 per PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF/
+        // PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF in pset/map/output.rs), not
+        // even with an empty value. `Map::get_pairs` is exactly what
+        // `consensus_encode` iterates over (see `impl_pset_consensus_encoding!`
+        // in pset/macros.rs), so this checks the real wire format rather than
+        // grepping serialized bytes.
+        let value_rangeproof_key = raw::ProprietaryKey::from_pset_pair(0x04, vec![]).to_key();
+        let asset_surjection_proof_key = raw::ProprietaryKey::from_pset_pair(0x05, vec![]).to_key();
+        for (i, out) in pset.outputs().iter().enumerate() {
+            let pairs = Map::get_pairs(out).unwrap();
+            assert!(
+                !pairs.iter().any(|p| p.key == value_rangeproof_key),
+                "output {i}: serialized pairs unexpectedly contain a value-rangeproof key: {:?}",
+                pairs,
+            );
+            assert!(
+                !pairs.iter().any(|p| p.key == asset_surjection_proof_key),
+                "output {i}: serialized pairs unexpectedly contain an asset-surjection-proof key: {:?}",
+                pairs,
+            );
+        }
+    }
+}
