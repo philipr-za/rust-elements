@@ -23,10 +23,10 @@ use crate::pset::map::Map;
 use crate::pset::raw;
 use crate::pset::Error;
 use crate::{confidential, pset};
-use crate::{encode, Script, TxOutWitness};
+use crate::{encode, RangeProof, Script, TxOutWitness, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
-use secp256k1_zkp::{self, Generator, RangeProof, SurjectionProof};
+use secp256k1_zkp::{self, Generator};
 
 use crate::issuance;
 
@@ -116,9 +116,9 @@ pub struct Output {
     pub asset_comm: Option<secp256k1_zkp::Generator>,
     // Proprietary key-value pairs for this output.
     /// Output value rangeproof
-    pub value_rangeproof: Option<Box<RangeProof>>,
+    pub value_rangeproof: Option<RangeProof>,
     /// Output Asset surjection proof
-    pub asset_surjection_proof: Option<Box<SurjectionProof>>,
+    pub asset_surjection_proof: Option<SurjectionProof>,
     /// Blinding pubkey which is used in receiving address
     pub blinding_key: Option<bitcoin::PublicKey>,
     /// The ephermal pk sampled by sender
@@ -126,9 +126,9 @@ pub struct Output {
     /// The index of the input whose owner should blind this output
     pub blinder_index: Option<u32>,
     /// The blind value rangeproof
-    pub blind_value_proof: Option<Box<RangeProof>>,
+    pub blind_value_proof: Option<RangeProof>,
     /// The blind asset surjection proof
-    pub blind_asset_proof: Option<Box<SurjectionProof>>,
+    pub blind_asset_proof: Option<SurjectionProof>,
     /// Pset
     /// Other fields
     #[cfg_attr(
@@ -233,8 +233,16 @@ impl Output {
             });
         }
         rv.script_pubkey = txout.script_pubkey;
-        rv.value_rangeproof = txout.witness.rangeproof;
-        rv.asset_surjection_proof = txout.witness.surjection_proof;
+        rv.value_rangeproof = if txout.witness.rangeproof.is_empty() {
+            None
+        } else {
+            Some(txout.witness.rangeproof)
+        };
+        rv.asset_surjection_proof = if txout.witness.surjection_proof.is_empty() {
+            None
+        } else {
+            Some(txout.witness.surjection_proof)
+        };
         rv
     }
 
@@ -261,8 +269,12 @@ impl Output {
             .unwrap_or_default(),
             script_pubkey: self.script_pubkey.clone(),
             witness: TxOutWitness {
-                surjection_proof: self.asset_surjection_proof.clone(),
-                rangeproof: self.value_rangeproof.clone(),
+                surjection_proof: self.asset_surjection_proof
+                    .clone()
+                    .unwrap_or(SurjectionProof::EMPTY),
+                rangeproof: self.value_rangeproof
+                    .clone()
+                    .unwrap_or(RangeProof::EMPTY),
             },
         }
     }
@@ -354,10 +366,10 @@ impl Map for Output {
                             impl_pset_prop_insert_pair!(self.asset_comm <= <raw_key: _> | <raw_value : Generator>);
                         }
                         PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF => {
-                            impl_pset_prop_insert_pair!(self.value_rangeproof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.value_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF => {
-                            impl_pset_prop_insert_pair!(self.asset_surjection_proof <= <raw_key: _> | <raw_value : Box<SurjectionProof>>);
+                            impl_pset_prop_insert_pair!(self.asset_surjection_proof <= <raw_key: _> | <raw_value : SurjectionProof>);
                         }
                         PSBT_ELEMENTS_OUT_BLINDING_PUBKEY => {
                             impl_pset_prop_insert_pair!(self.blinding_key <= <raw_key: _> | <raw_value : PublicKey>);
@@ -369,10 +381,10 @@ impl Map for Output {
                             impl_pset_prop_insert_pair!(self.blinder_index <= <raw_key: _> | <raw_value : u32>);
                         }
                         PSBT_ELEMENTS_OUT_BLIND_VALUE_PROOF => {
-                            impl_pset_prop_insert_pair!(self.blind_value_proof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.blind_value_proof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_OUT_BLIND_ASSET_PROOF => {
-                            impl_pset_prop_insert_pair!(self.blind_asset_proof <= <raw_key: _> | <raw_value : Box<SurjectionProof>>);
+                            impl_pset_prop_insert_pair!(self.blind_asset_proof <= <raw_key: _> | <raw_value : SurjectionProof>);
                         }
                         _ => match self.proprietary.entry(prop_key) {
                             Entry::Vacant(empty_key) => {
@@ -582,5 +594,61 @@ impl Decodable for Output {
             return Err(encode::Error::PsetError(Error::MissingBlindingInfo));
         }
         Ok(rv)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pset::{raw, Map, PartiallySignedTransaction};
+    use crate::{encode, Transaction};
+
+    // Regression test from Claude that the next two commits do not cause
+    // `Pset::from_tx` to insert 0-length proofs when given unblinded outputs.
+    // It should insert no proofs at all.
+    #[test]
+    fn from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs() {
+        // Fully-explicit transaction from `test_pset` in mod.rs
+        let tx_hex = "010000000001715df5ccebaf02ff18d6fae7263fa69fed5de59c900f4749556eba41bc7bf2af0000000000000000000201230f4f5d4b7c6fa845806ee4f67713459e1b69e8e60fcee2e4940c7a0d5de1b2010000000124101100001f5175517551755175517551755175517551755175517551755175517551755101230f4f5d4b7c6fa845806ee4f67713459e1b69e8e60fcee2e4940c7a0d5de1b2010000000005f5e100000000000000";
+        let tx: Transaction =
+            encode::deserialize(&hex::decode_to_vec(tx_hex).unwrap()).unwrap();
+        assert!(tx.output.iter().all(|o| o.witness.is_empty()), "fixture must be unblinded");
+
+        let pset = PartiallySignedTransaction::from_tx(tx);
+        for (i, out) in pset.outputs().iter().enumerate() {
+            assert!(
+                out.value_rangeproof.is_none(),
+                "output {i}: value_rangeproof should be None for an unblinded output, got {:?}",
+                out.value_rangeproof,
+            );
+            assert!(
+                out.asset_surjection_proof.is_none(),
+                "output {i}: asset_surjection_proof should be None for an unblinded output, got {:?}",
+                out.asset_surjection_proof,
+            );
+        }
+
+        // Wire-format check: an unblinded output's key-value pairs must not
+        // include the value-rangeproof / asset-surjection-proof proprietary
+        // keys at all (subtypes 0x04/0x05 per PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF/
+        // PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF in pset/map/output.rs), not
+        // even with an empty value. `Map::get_pairs` is exactly what
+        // `consensus_encode` iterates over (see `impl_pset_consensus_encoding!`
+        // in pset/macros.rs), so this checks the real wire format rather than
+        // grepping serialized bytes.
+        let value_rangeproof_key = raw::ProprietaryKey::from_pset_pair(0x04, vec![]).to_key();
+        let asset_surjection_proof_key = raw::ProprietaryKey::from_pset_pair(0x05, vec![]).to_key();
+        for (i, out) in pset.outputs().iter().enumerate() {
+            let pairs = Map::get_pairs(out).unwrap();
+            assert!(
+                !pairs.iter().any(|p| p.key == value_rangeproof_key),
+                "output {i}: serialized pairs unexpectedly contain a value-rangeproof key: {:?}",
+                pairs,
+            );
+            assert!(
+                !pairs.iter().any(|p| p.key == asset_surjection_proof_key),
+                "output {i}: serialized pairs unexpectedly contain an asset-surjection-proof key: {:?}",
+                pairs,
+            );
+        }
     }
 }

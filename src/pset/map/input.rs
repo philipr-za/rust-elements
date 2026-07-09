@@ -32,10 +32,10 @@ use crate::pset::raw;
 use crate::pset::serialize;
 use crate::pset::{self, error, Error};
 use crate::{transaction::SighashTypeParseError, SchnorrSighashType};
-use crate::{AssetIssuance, BlockHash, EcdsaSighashType, Script, Transaction, TxIn, TxOut, Txid};
+use crate::{AssetIssuance, BlockHash, EcdsaSighashType, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
-use secp256k1_zkp::{self, RangeProof, SurjectionProof, Tweak, ZERO_TWEAK};
+use secp256k1_zkp::{self, Tweak, ZERO_TWEAK};
 
 use crate::{OutPoint, Sequence};
 
@@ -262,9 +262,9 @@ pub struct Input {
     /// The issuance value commitment
     pub issuance_value_comm: Option<secp256k1_zkp::PedersenCommitment>,
     /// Issuance value rangeproof
-    pub issuance_value_rangeproof: Option<Box<RangeProof>>,
+    pub issuance_value_rangeproof: Option<RangeProof>,
     /// Issuance keys rangeproof
-    pub issuance_keys_rangeproof: Option<Box<RangeProof>>,
+    pub issuance_keys_rangeproof: Option<RangeProof>,
     /// Pegin Transaction. Should be a `bitcoin::Transaction`
     pub pegin_tx: Option<bitcoin::Transaction>,
     /// Pegin Transaction proof
@@ -287,19 +287,19 @@ pub struct Input {
     /// Issuance asset entropy
     pub issuance_asset_entropy: Option<[u8; 32]>,
     /// input utxo rangeproof
-    pub in_utxo_rangeproof: Option<Box<RangeProof>>,
+    pub in_utxo_rangeproof: Option<RangeProof>,
     /// Proof that blinded issuance matches the commitment
-    pub in_issuance_blind_value_proof: Option<Box<RangeProof>>,
+    pub in_issuance_blind_value_proof: Option<RangeProof>,
     /// Proof that blinded inflation keys matches the corresponding commitment
-    pub in_issuance_blind_inflation_keys_proof: Option<Box<RangeProof>>,
+    pub in_issuance_blind_inflation_keys_proof: Option<RangeProof>,
     /// The explicit amount of the input
     pub amount: Option<u64>,
     /// The blind value rangeproof
-    pub blind_value_proof: Option<Box<RangeProof>>,
+    pub blind_value_proof: Option<RangeProof>,
     /// The input explicit asset
     pub asset: Option<AssetId>,
     /// The blind asset surjection proof
-    pub blind_asset_proof: Option<Box<SurjectionProof>>,
+    pub blind_asset_proof: Option<SurjectionProof>,
     /// Whether the issuance is blinded
     pub blinded_issuance: Option<u8>,
     /// Other fields
@@ -540,8 +540,16 @@ impl Input {
             }
 
             // Witness
-            ret.issuance_keys_rangeproof = txin.witness.inflation_keys_rangeproof;
-            ret.issuance_value_rangeproof = txin.witness.amount_rangeproof;
+            ret.issuance_keys_rangeproof = if txin.witness.inflation_keys_rangeproof.is_empty() {
+                None
+            } else {
+                Some(txin.witness.inflation_keys_rangeproof)
+            };
+            ret.issuance_value_rangeproof = if txin.witness.amount_rangeproof.is_empty() {
+                None
+            } else {
+                Some(txin.witness.amount_rangeproof)
+            };
         }
         ret
     }
@@ -746,10 +754,10 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.issuance_value_comm <= <raw_key: _> | <raw_value : secp256k1_zkp::PedersenCommitment>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_VALUE_RANGEPROOF => {
-                            impl_pset_prop_insert_pair!(self.issuance_value_rangeproof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.issuance_value_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_KEYS_RANGEPROOF => {
-                            impl_pset_prop_insert_pair!(self.issuance_keys_rangeproof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.issuance_keys_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_IN_PEG_IN_TX => {
                             impl_pset_prop_insert_pair!(self.pegin_tx <= <raw_key: _> | <raw_value : bitcoin::Transaction>);
@@ -783,25 +791,25 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.issuance_asset_entropy <= <raw_key: _> | <raw_value : [u8;32]>);
                         }
                         PSBT_ELEMENTS_IN_UTXO_RANGEPROOF => {
-                            impl_pset_prop_insert_pair!(self.in_utxo_rangeproof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.in_utxo_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF => {
-                            impl_pset_prop_insert_pair!(self.in_issuance_blind_value_proof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.in_issuance_blind_value_proof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF => {
-                            impl_pset_prop_insert_pair!(self.in_issuance_blind_inflation_keys_proof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.in_issuance_blind_inflation_keys_proof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_IN_EXPLICIT_VALUE => {
                             impl_pset_prop_insert_pair!(self.amount <= <raw_key: _> | <raw_value : u64>);
                         }
                         PSBT_ELEMENTS_IN_VALUE_PROOF => {
-                            impl_pset_prop_insert_pair!(self.blind_value_proof <= <raw_key: _> | <raw_value : Box<RangeProof>>);
+                            impl_pset_prop_insert_pair!(self.blind_value_proof <= <raw_key: _> | <raw_value : RangeProof>);
                         }
                         PSBT_ELEMENTS_IN_EXPLICIT_ASSET => {
                             impl_pset_prop_insert_pair!(self.asset <= <raw_key: _> | <raw_value : AssetId>);
                         }
                         PSBT_ELEMENTS_IN_ASSET_PROOF => {
-                            impl_pset_prop_insert_pair!(self.blind_asset_proof <= <raw_key: _> | <raw_value : Box<SurjectionProof>>);
+                            impl_pset_prop_insert_pair!(self.blind_asset_proof <= <raw_key: _> | <raw_value : SurjectionProof>);
                         }
                         PSBT_ELEMENTS_IN_BLINDED_ISSUANCE => {
                             impl_pset_prop_insert_pair!(self.blinded_issuance <= <raw_key: _> | <raw_value : u8>);
@@ -1202,5 +1210,53 @@ where
             Ok(())
         }
         Entry::Occupied(_) => Err(pset::Error::DuplicateKey(raw_key).into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use secp256k1_zkp::ZERO_TWEAK;
+
+    use crate::confidential;
+    use crate::pset::PartiallySignedTransaction;
+    use crate::{AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
+
+    // See `pset::map::output::tests::from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs`.
+    // Same principle, but for the asset issuance rangeproofs in the input witnesses.
+    #[test]
+    fn from_tx_does_not_spuriously_set_proofs_on_explicit_issuance() {
+        let txin = TxIn {
+            asset_issuance: AssetIssuance {
+                asset_blinding_nonce: ZERO_TWEAK,
+                asset_entropy: [1u8; 32],
+                amount: confidential::Value::Explicit(1000),
+                inflation_keys: confidential::Value::Null,
+            },
+            witness: TxInWitness::empty(),
+            ..TxIn::default()
+        };
+        assert!(txin.has_issuance());
+        assert!(txin.witness.amount_rangeproof.is_empty());
+        assert!(txin.witness.inflation_keys_rangeproof.is_empty());
+
+        let tx = Transaction {
+            version: 2,
+            lock_time: LockTime::ZERO,
+            input: vec![txin],
+            output: vec![],
+        };
+
+        let pset = PartiallySignedTransaction::from_tx(tx);
+        let input = &pset.inputs()[0];
+        assert!(
+            input.issuance_value_rangeproof.is_none(),
+            "issuance_value_rangeproof should be None for an explicit issuance, got {:?}",
+            input.issuance_value_rangeproof,
+        );
+        assert!(
+            input.issuance_keys_rangeproof.is_none(),
+            "issuance_keys_rangeproof should be None for an explicit issuance, got {:?}",
+            input.issuance_keys_rangeproof,
+        );
     }
 }
