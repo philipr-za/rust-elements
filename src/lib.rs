@@ -92,7 +92,8 @@ pub use crate::hash_types::*;
 pub use crate::issuance::{
     AssetBlindingNonce, AssetBlindingNonceDecoder, AssetBlindingNonceDecoderError,
     AssetBlindingNonceEncoder, AssetEntropy, AssetEntropyDecoder, AssetEntropyDecoderError,
-    AssetEntropyEncoder, AssetId, ContractHash,
+    AssetEntropyEncoder, AssetId, AssetIdDecoder, AssetIdDecoderError, AssetIdEncoder,
+    ContractHash,
 };
 pub use crate::locktime::LockTime;
 pub use crate::schnorr::{SchnorrSig, SchnorrSigError};

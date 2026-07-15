@@ -343,6 +343,37 @@ impl Decodable for AssetId {
     }
 }
 
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`AssetId`] type.
+    #[derive(Clone, Debug)]
+    pub struct AssetIdEncoder<'e>(encoding::ArrayRefEncoder<'e, 32>);
+}
+
+impl encoding::Encode for AssetId {
+    type Encoder<'e> = AssetIdEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AssetIdEncoder::new(encoding::ArrayRefEncoder::without_length_prefix(&self.0))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`AssetId`] type.
+    #[derive(Default)]
+    pub struct AssetIdDecoder(encoding::ArrayDecoder<32>);
+
+    /// Decoder error for the [`AssetId`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct AssetIdDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "error decoding asset ID";
+
+    impl Decode for AssetId {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(AssetId::from_byte_array(bytes))
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
