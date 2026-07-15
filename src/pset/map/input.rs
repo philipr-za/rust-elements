@@ -32,10 +32,10 @@ use crate::pset::raw;
 use crate::pset::serialize;
 use crate::pset::{self, error, Error};
 use crate::{transaction::SighashTypeParseError, SchnorrSighashType};
-use crate::{AssetIssuance, BlockHash, EcdsaSighashType, PeginWitness, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
+use crate::{AssetBlindingNonce, AssetIssuance, BlockHash, EcdsaSighashType, PeginWitness, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
-use secp256k1_zkp::{self, Tweak, ZERO_TWEAK};
+use secp256k1_zkp;
 
 use crate::{OutPoint, Sequence};
 
@@ -258,7 +258,7 @@ pub struct Input {
     /// Issuance inflation keys commitment
     pub issuance_inflation_keys_comm: Option<secp256k1_zkp::PedersenCommitment>,
     /// Issuance blinding nonce
-    pub issuance_blinding_nonce: Option<Tweak>,
+    pub issuance_blinding_nonce: Option<AssetBlindingNonce>,
     /// Issuance asset entropy
     pub issuance_asset_entropy: Option<AssetEntropy>,
     /// input utxo rangeproof
@@ -524,8 +524,8 @@ impl Input {
     /// Compute the issuance asset ids from pset. This function does not check
     /// whether there is an issuance in this input. Returns (`asset_id`, `token_id`)
     pub fn issuance_ids(&self) -> (AssetId, AssetId) {
-        let issue_nonce = self.issuance_blinding_nonce.unwrap_or(ZERO_TWEAK);
-        let entropy = if issue_nonce == ZERO_TWEAK {
+        let issue_nonce = self.issuance_blinding_nonce.unwrap_or_default();
+        let entropy = if issue_nonce.is_null() {
             // new issuance
             let prevout = OutPoint {
                 txid: self.previous_txid,
@@ -560,7 +560,7 @@ impl Input {
     /// Get the issuance for this tx input
     pub fn asset_issuance(&self) -> AssetIssuance {
         AssetIssuance {
-            asset_blinding_nonce: *self.issuance_blinding_nonce.as_ref().unwrap_or(&ZERO_TWEAK),
+            asset_blinding_nonce: self.issuance_blinding_nonce.unwrap_or_default(),
             asset_entropy: self.issuance_asset_entropy.unwrap_or_default(),
             amount: match (self.issuance_value_amount, self.issuance_value_comm) {
                 (None, None) => confidential::Value::Null,
@@ -754,7 +754,7 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.issuance_inflation_keys_comm <= <raw_key: _> | <raw_value : secp256k1_zkp::PedersenCommitment>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE => {
-                            impl_pset_prop_insert_pair!(self.issuance_blinding_nonce <= <raw_key: _> | <raw_value : Tweak>);
+                            impl_pset_prop_insert_pair!(self.issuance_blinding_nonce <= <raw_key: _> | <raw_value : AssetBlindingNonce>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY => {
                             impl_pset_prop_insert_pair!(self.issuance_asset_entropy <= <raw_key: _> | <raw_value : AssetEntropy>);
@@ -1184,9 +1184,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use secp256k1_zkp::ZERO_TWEAK;
-
-    use crate::confidential;
+    use crate::{AssetBlindingNonce, confidential};
     use crate::pset::PartiallySignedTransaction;
     use crate::{AssetEntropy, AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
 
@@ -1198,7 +1196,7 @@ mod tests {
     fn from_tx_does_not_spuriously_set_proofs_on_explicit_issuance() {
         let txin = TxIn {
             asset_issuance: AssetIssuance {
-                asset_blinding_nonce: ZERO_TWEAK,
+                asset_blinding_nonce: AssetBlindingNonce::NEW_ISSUANCE,
                 asset_entropy: DUMMY_ENTROPY,
                 amount: confidential::Value::Explicit(1000),
                 inflation_keys: confidential::Value::Null,

@@ -24,12 +24,12 @@ use crate::encode::{
     self, deserialize, deserialize_partial, serialize, Decodable, Encodable, VarInt,
 };
 use crate::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
-use crate::{AssetEntropy, AssetId, BlockHash, RangeProof, Script, SurjectionProof, Transaction, TxOut, Txid};
+use crate::{AssetBlindingNonce, AssetEntropy, AssetId, BlockHash, RangeProof, Script, SurjectionProof, Transaction, TxOut, Txid};
 use bitcoin;
 use bitcoin::bip32::{ChildNumber, Fingerprint, KeySource};
 use bitcoin::{key::XOnlyPublicKey, PublicKey};
 use internals::slice::SliceExt;
-use secp256k1_zkp::{self, Tweak};
+use secp256k1_zkp;
 
 use super::map::{PsbtSighashType, TapTree};
 use crate::schnorr;
@@ -59,6 +59,7 @@ pub fn serialize_hex<T: Serialize + ?Sized>(data: &T) -> String {
 
 impl_pset_de_serialize!(Transaction);
 impl_pset_de_serialize!(TxOut);
+impl_pset_de_serialize!(AssetBlindingNonce);
 impl_pset_de_serialize!(AssetEntropy);
 impl_pset_de_serialize!(AssetId);
 impl_pset_de_serialize!(u8);
@@ -106,19 +107,6 @@ impl Serialize for VarInt {
 impl Deserialize for VarInt {
     fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
         VarInt::consensus_decode(bytes)
-    }
-}
-
-impl Serialize for Tweak {
-    fn serialize(&self) -> Vec<u8> {
-        encode::serialize(self.as_ref())
-    }
-}
-
-impl Deserialize for Tweak {
-    fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        let x = deserialize::<[u8; 32]>(bytes)?;
-        Tweak::from_slice(&x).map_err(|_| encode::Error::ParseFailed("invalid Tweak"))
     }
 }
 

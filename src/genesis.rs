@@ -15,12 +15,11 @@
 //! Helpers to calculate the genesis block for a given network.
 
 use bitcoin::secp256k1::impl_array_newtype;
-use secp256k1_zkp::Tweak;
 use crate::hashes::{sha256, HashEngine};
 use crate::opcodes::all::OP_RETURN;
 use crate::opcodes::OP_TRUE;
 use crate::{confidential, script, AssetId, Block, BlockExtData, BlockHash, BlockHeader, LockTime, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness};
-use crate::{AssetEntropy, AssetIssuance, ContractHash, OutPoint, Txid};
+use crate::{AssetBlindingNonce, AssetEntropy, AssetIssuance, ContractHash, OutPoint, Txid};
 use crate::confidential::Nonce;
 
 /// Parameters that influence chain consensus. The contents of the genesis block for a given network
@@ -146,7 +145,7 @@ fn liquid_genesis_asset_tx(network_params: &NetworkParams) -> Option<Transaction
     let asset_id = AssetId::from_entropy(asset_entropy);
 
     let asset_issuance = AssetIssuance {
-        asset_blinding_nonce: Tweak::default(),
+        asset_blinding_nonce: AssetBlindingNonce::NEW_ISSUANCE,
         asset_entropy: AssetEntropy::NEW_ISSUANCE,
         amount: confidential::Value::Explicit(asset_amount),
         inflation_keys: confidential::Value::Explicit(0),

@@ -64,7 +64,7 @@ encoder_newtype_exact! {
     /// Encoder for the [`AssetIssuance`] type.
     #[derive(Clone, Debug)]
     pub struct AssetIssuanceEncoder<'e>(Encoder4<
-        ArrayRefEncoder<'e, 32>,
+        crate::AssetBlindingNonceEncoder<'e>,
         crate::AssetEntropyEncoder<'e>,
         crate::confidential::ValueEncoder<'e>,
         crate::confidential::ValueEncoder<'e>,
@@ -76,7 +76,7 @@ impl Encode for AssetIssuance {
 
     fn encoder(&self) -> Self::Encoder<'_> {
         AssetIssuanceEncoder::new(Encoder4::new(
-            ArrayRefEncoder::without_length_prefix(self.asset_blinding_nonce.as_ref()),
+            self.asset_blinding_nonce.encoder(),
             self.asset_entropy.encoder(),
             self.amount.encoder(),
             self.inflation_keys.encoder(),
