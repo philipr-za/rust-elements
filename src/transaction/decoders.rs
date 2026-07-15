@@ -8,8 +8,8 @@
 use core::fmt;
 
 use super::{
-    AssetEntropy, AssetIssuance, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut,
-    TxOutWitness, Txid,
+    AssetIssuance, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness,
+    Txid,
 };
 use crate::confidential::{RangeProofDecoder, RangeProofDecoderError};
 use crate::encoding::{
@@ -81,7 +81,7 @@ decoder_newtype! {
     #[derive(Default)]
     pub struct AssetIssuanceDecoder(Decoder4<
         ArrayDecoder<32>,
-        ArrayDecoder<32>,
+        crate::AssetEntropyDecoder,
         crate::confidential::ValueDecoder,
         crate::confidential::ValueDecoder,
     >);
@@ -90,7 +90,7 @@ decoder_newtype! {
     pub struct AssetIssuanceDecoderError(enum AssetIssuanceDecoderErrorInner {
         Decode(Decoder4Error<
             UnexpectedEofError,
-            UnexpectedEofError,
+            crate::AssetEntropyDecoderError,
             crate::confidential::ValueDecoderError,
             crate::confidential::ValueDecoderError,
         >),
@@ -104,7 +104,7 @@ decoder_newtype! {
                 asset_blinding_nonce: secp256k1_zkp::Tweak::from_inner(asset_blinding_nonce)
                     .map_err(AssetIssuanceDecoderErrorInner::InvalidTweak)
                     .map_err(AssetIssuanceDecoderError)?,
-                asset_entropy: AssetEntropy::from_byte_array(asset_entropy),
+                asset_entropy,
                 amount,
                 inflation_keys,
             })

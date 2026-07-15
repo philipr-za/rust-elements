@@ -14,6 +14,7 @@
 
 //! Asset Issuance
 
+use core::fmt;
 use std::io;
 
 use crate::encode::{self, Encodable, Decodable};
@@ -70,6 +71,37 @@ impl Encodable for AssetEntropy {
 impl Decodable for AssetEntropy {
     fn consensus_decode<D: io::Read>(d: D) -> Result<Self, encode::Error> {
         <[u8; 32]>::consensus_decode(d).map(Self)
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`AssetEntropyEncoder`] type.
+    #[derive(Clone, Debug)]
+    pub struct AssetEntropyEncoder<'e>(encoding::ArrayRefEncoder<'e, 32>);
+}
+
+impl encoding::Encode for AssetEntropy {
+    type Encoder<'e> = AssetEntropyEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AssetEntropyEncoder::new(encoding::ArrayRefEncoder::without_length_prefix(&self.0))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`AssetEntropy`] type.
+    #[derive(Default)]
+    pub struct AssetEntropyDecoder(encoding::ArrayDecoder<32>);
+
+    /// Decoder error for the [`AssetEntropy`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct AssetEntropyDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "error decoding asset entropy";
+
+    impl Decode for AssetEntropy {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(AssetEntropy::from_byte_array(bytes))
+        }
     }
 }
 
