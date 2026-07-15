@@ -51,6 +51,28 @@ impl_sha256_midstate_wrapper! {
     pub struct AssetEntropy([u8; 32]);
 }
 
+impl AssetEntropy {
+    /// The all-zeroes "entropy" used for new issuances (vs reissuances).
+    pub const NEW_ISSUANCE: Self = Self([0; 32]);
+
+    /// Re-interpret the asset entropy as a contract hash.
+    pub fn into_contract_hash(self) -> ContractHash {
+        ContractHash::from_byte_array(self.0)
+    }
+}
+
+impl Encodable for AssetEntropy {
+    fn consensus_encode<W: io::Write>(&self, e: W) -> Result<usize, encode::Error> {
+       self.0.consensus_encode(e) 
+    }
+}
+
+impl Decodable for AssetEntropy {
+    fn consensus_decode<D: io::Read>(d: D) -> Result<Self, encode::Error> {
+        <[u8; 32]>::consensus_decode(d).map(Self)
+    }
+}
+
 impl_sha256_midstate_wrapper! {
     /// An issued asset ID.
     pub struct AssetId([u8; 32]);

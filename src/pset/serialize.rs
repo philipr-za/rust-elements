@@ -24,7 +24,7 @@ use crate::encode::{
     self, deserialize, deserialize_partial, serialize, Decodable, Encodable, VarInt,
 };
 use crate::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
-use crate::{AssetId, BlockHash, RangeProof, Script, SurjectionProof, Transaction, TxOut, Txid};
+use crate::{AssetEntropy, AssetId, BlockHash, RangeProof, Script, SurjectionProof, Transaction, TxOut, Txid};
 use bitcoin;
 use bitcoin::bip32::{ChildNumber, Fingerprint, KeySource};
 use bitcoin::{key::XOnlyPublicKey, PublicKey};
@@ -59,6 +59,7 @@ pub fn serialize_hex<T: Serialize + ?Sized>(data: &T) -> String {
 
 impl_pset_de_serialize!(Transaction);
 impl_pset_de_serialize!(TxOut);
+impl_pset_de_serialize!(AssetEntropy);
 impl_pset_de_serialize!(AssetId);
 impl_pset_de_serialize!(u8);
 impl_pset_de_serialize!(u32);

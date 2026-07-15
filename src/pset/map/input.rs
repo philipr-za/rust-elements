@@ -21,7 +21,7 @@ use std::{
 };
 
 use crate::taproot::{ControlBlock, LeafVersion, TapNodeHash, TapLeafHash};
-use crate::{schnorr, AssetId, ContractHash};
+use crate::{schnorr, AssetId};
 
 use crate::{confidential, locktime};
 use crate::encode::{self, Decodable};
@@ -260,7 +260,7 @@ pub struct Input {
     /// Issuance blinding nonce
     pub issuance_blinding_nonce: Option<Tweak>,
     /// Issuance asset entropy
-    pub issuance_asset_entropy: Option<[u8; 32]>,
+    pub issuance_asset_entropy: Option<AssetEntropy>,
     /// input utxo rangeproof
     pub in_utxo_rangeproof: Option<RangeProof>,
     /// Proof that blinded issuance matches the commitment
@@ -531,12 +531,14 @@ impl Input {
                 txid: self.previous_txid,
                 vout: self.previous_output_index,
             };
-            let contract_hash =
-                ContractHash::from_byte_array(self.issuance_asset_entropy.unwrap_or_default());
+            let contract_hash = self
+                .issuance_asset_entropy
+                .unwrap_or_default()
+                .into_contract_hash();
             AssetId::generate_asset_entropy(prevout, contract_hash)
         } else {
             // re-issuance
-            AssetEntropy::from_byte_array(self.issuance_asset_entropy.unwrap_or_default())
+            self.issuance_asset_entropy.unwrap_or_default()
         };
         let asset_id = AssetId::from_entropy(entropy);
         let token_id =
@@ -755,7 +757,7 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.issuance_blinding_nonce <= <raw_key: _> | <raw_value : Tweak>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY => {
-                            impl_pset_prop_insert_pair!(self.issuance_asset_entropy <= <raw_key: _> | <raw_value : [u8;32]>);
+                            impl_pset_prop_insert_pair!(self.issuance_asset_entropy <= <raw_key: _> | <raw_value : AssetEntropy>);
                         }
                         PSBT_ELEMENTS_IN_UTXO_RANGEPROOF => {
                             impl_pset_prop_insert_pair!(self.in_utxo_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
@@ -1186,7 +1188,9 @@ mod tests {
 
     use crate::confidential;
     use crate::pset::PartiallySignedTransaction;
-    use crate::{AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
+    use crate::{AssetEntropy, AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
+
+    const DUMMY_ENTROPY: AssetEntropy = AssetEntropy::from_byte_array([1; 32]);
 
     // See `pset::map::output::tests::from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs`.
     // Same principle, but for the asset issuance rangeproofs in the input witnesses.
@@ -1195,7 +1199,7 @@ mod tests {
         let txin = TxIn {
             asset_issuance: AssetIssuance {
                 asset_blinding_nonce: ZERO_TWEAK,
-                asset_entropy: [1u8; 32],
+                asset_entropy: DUMMY_ENTROPY,
                 amount: confidential::Value::Explicit(1000),
                 inflation_keys: confidential::Value::Null,
             },

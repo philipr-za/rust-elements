@@ -406,22 +406,22 @@ macro_rules! impl_sha256_midstate_wrapper {
 
         impl $ty {
             /// Constructs this wrapper struct from raw bytes.
-            pub fn from_byte_array(inner: [u8; 32]) -> Self {
+            pub const fn from_byte_array(inner: [u8; 32]) -> Self {
                 Self(inner)
             }
 
             /// The raw bytes within the wrapper type.
-            pub fn as_byte_array(&self) -> &[u8; 32] {
+            pub const fn as_byte_array(&self) -> &[u8; 32] {
                 &self.0
             }
 
             /// The raw bytes within the wrapper type.
-            pub fn to_byte_array(self) -> [u8; 32] {
+            pub const fn to_byte_array(self) -> [u8; 32] {
                 self.0
             }
 
             /// (Private) convert a sha256 midstate to an object.
-            fn from_midstate(value: crate::hashes::sha256::Midstate) -> Self {
+            const fn from_midstate(value: crate::hashes::sha256::Midstate) -> Self {
                 Self(value.to_parts().0)
             }
         }

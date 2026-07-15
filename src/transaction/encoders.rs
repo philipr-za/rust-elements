@@ -77,7 +77,7 @@ impl Encode for AssetIssuance {
     fn encoder(&self) -> Self::Encoder<'_> {
         AssetIssuanceEncoder::new(Encoder4::new(
             ArrayRefEncoder::without_length_prefix(self.asset_blinding_nonce.as_ref()),
-            ArrayRefEncoder::without_length_prefix(&self.asset_entropy),
+            ArrayRefEncoder::without_length_prefix(self.asset_entropy.as_byte_array()),
             self.amount.encoder(),
             self.inflation_keys.encoder(),
         ))

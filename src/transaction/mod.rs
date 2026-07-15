@@ -28,7 +28,7 @@ use bitcoin::{self, VarInt};
 use bitcoin::hashes::Hash as _;
 use crate::hashes::{sha256d, HashEngine as _};
 
-use crate::{confidential, ContractHash};
+use crate::confidential;
 use crate::encode::{self, Encodable, Decodable};
 use crate::issuance::{AssetEntropy, AssetId};
 use crate::opcodes;
@@ -52,7 +52,7 @@ pub struct AssetIssuance {
     /// Zero for a new asset issuance; otherwise a blinding factor for the input
     pub asset_blinding_nonce: Tweak,
     /// Freeform entropy field
-    pub asset_entropy: [u8; 32],
+    pub asset_entropy: AssetEntropy,
     /// Amount of asset to issue
     pub amount: confidential::Value,
     /// Amount of inflation keys to issue
@@ -64,7 +64,7 @@ impl AssetIssuance {
     pub fn null() -> Self {
         AssetIssuance {
             asset_blinding_nonce: ZERO_TWEAK,
-            asset_entropy: [0; 32],
+            asset_entropy: AssetEntropy::NEW_ISSUANCE,
             amount: confidential::Value::Null,
             inflation_keys: confidential::Value::Null,
         }
@@ -549,12 +549,14 @@ impl TxIn {
     /// whether there is an issuance in this input. Returns (`asset_id`, `token_id`)
     pub fn issuance_ids(&self) -> (AssetId, AssetId) {
         let entropy = if self.asset_issuance.asset_blinding_nonce == ZERO_TWEAK {
-            let contract_hash =
-                ContractHash::from_byte_array(self.asset_issuance.asset_entropy);
+            let contract_hash = self
+                .asset_issuance
+                .asset_entropy
+                .into_contract_hash();
             AssetId::generate_asset_entropy(self.previous_output, contract_hash)
         } else {
             // re-issuance
-            AssetEntropy::from_byte_array(self.asset_issuance.asset_entropy)
+            self.asset_issuance.asset_entropy
         };
         let asset_id = AssetId::from_entropy(entropy);
         let token_id =
@@ -2046,7 +2048,7 @@ mod tests {
             tx.input[0].asset_issuance,
             AssetIssuance {
                 asset_blinding_nonce: ZERO_TWEAK,
-                asset_entropy: [0; 32],
+                asset_entropy: AssetEntropy::NEW_ISSUANCE,
                 amount: confidential::Value::from_commitment(
                     &[  0x09, 0x81, 0x65, 0x4e, 0xb5, 0xcc, 0xd9, 0x92,
                         0x7b, 0x8b, 0xea, 0x94, 0x99, 0x7d, 0xce, 0x4a,
