@@ -20,21 +20,41 @@ use crate::hashes::HashEngine as _;
 use crate::schnorr::{UntweakedPublicKey, TweakedPublicKey, TapTweak};
 use crate::Script;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
-use hashes::sha256t;
+use hashes::{sha256, sha256t};
 use secp256k1_zkp::{self, Secp256k1, Scalar};
 use crate::encode::Encodable;
 
-hashes::sha256t_tag! {
-    pub struct TapLeafTag = hash_str("TapLeaf/elements");
+
+/// The tag for tapleaves.
+#[derive(Copy, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
+pub struct TapLeafTag;
+
+/// The tag for tapbranches.
+#[derive(Copy, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
+pub struct TapBranchTag;
+
+/// The tag for taptweaks.
+#[derive(Copy, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
+pub struct TapTweakTag;
+
+/// The tag for Taproot sighashes.
+#[derive(Copy, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash)]
+pub struct TapSighashTag;
+
+impl sha256t::Tag for TapLeafTag {
+    const MIDSTATE: sha256::Midstate = sha256::Midstate::hash_tag(b"TapLeaf/elements");
 }
-hashes::sha256t_tag! {
-    pub struct TapBranchTag = hash_str("TapBranch/elements");
+
+impl sha256t::Tag for TapBranchTag {
+    const MIDSTATE: sha256::Midstate = sha256::Midstate::hash_tag(b"TapBranch/elements");
 }
-hashes::sha256t_tag! {
-    pub struct TapTweakTag = hash_str("TapTweak/elements");
+
+impl sha256t::Tag for TapTweakTag {
+    const MIDSTATE: sha256::Midstate = sha256::Midstate::hash_tag(b"TapTweak/elements");
 }
-hashes::sha256t_tag! {
-    pub struct TapSighashTag = hash_str("TapSighash/elements");
+
+impl sha256t::Tag for TapSighashTag {
+    const MIDSTATE: sha256::Midstate = sha256::Midstate::hash_tag(b"TapSighash/elements");
 }
 
 // Taproot test vectors from BIP-341 state the hashes without any reversing

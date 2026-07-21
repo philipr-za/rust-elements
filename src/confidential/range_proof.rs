@@ -3,6 +3,7 @@
 //! Range Proofs
 
 use core::convert::TryInto;
+use core::fmt;
 use std::io;
 
 use secp256k1_zkp::rand::{CryptoRng, RngCore};
@@ -11,7 +12,7 @@ use secp256k1_zkp::{self, Generator, PedersenCommitment, Secp256k1, SecretKey, S
 use serde::{Deserializer, Serializer};
 
 use crate::confidential::ValueBlindingFactor;
-use crate::encode;
+use crate::{encode, encoding};
 
 /// A range proof, which represents a proof that a confidential value lies within
 /// some range (typically `[0, 2^64)`).
@@ -188,5 +189,58 @@ impl<'de> serde::Deserialize<'de> for RangeProof {
     {
         Option::<secp256k1_zkp::RangeProof>::deserialize(deserializer)
             .map(|inner| Self { inner: inner.map(Box::new) })
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`RangeProof`] type.
+    #[derive(Clone, Debug)]
+    pub struct Encoder<'e>(super::PrefixedByteVecEncoder);
+}
+
+impl encoding::Encode for RangeProof {
+    type Encoder<'e> = Encoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        Encoder::new(super::PrefixedByteVecEncoder::new(self.to_vec()))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`RangeProof`] type.
+    #[derive(Default)]
+    pub struct Decoder(encoding::ByteVecDecoder);
+
+    /// Decoder error for the [`RangeProof`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct DecoderError(enum DecoderErrorInner {
+        Decode(encoding::ByteVecDecoderError),
+        RangeProof(secp256k1_zkp::Error),
+    });
+
+    impl Decode for RangeProof {
+        fn convert_inner(v) -> Result<_, DecoderErrorInner> {
+            Self::Output::from_slice(&v).map_err(DecoderErrorInner::RangeProof)
+        }
+    }
+}
+
+impl fmt::Display for DecoderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use DecoderErrorInner as Inner;
+        match self.0 {
+            Inner::Decode(..) => f.write_str("error decoding byte vector"),
+            Inner::RangeProof(..) => f.write_str("error decoding range proof"),
+        }
+    }
+}
+
+impl std::error::Error for DecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use DecoderErrorInner as Inner;
+        match self.0 {
+            Inner::Decode(ref e) => Some(e),
+            Inner::RangeProof(ref e) => Some(e),
+        }
     }
 }

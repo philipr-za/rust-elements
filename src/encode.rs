@@ -29,6 +29,39 @@ pub use bitcoin::{self, consensus::encode::MAX_VEC_SIZE};
 
 use crate::taproot::TapLeafHash;
 
+/// Adaptor to count bytes, used to implement Encodable/Decodable
+/// in terms of the new Encode/Decode traits.
+pub(crate) struct ByteCounter<W> {
+    inner: W,
+    count: usize,
+}
+
+impl<W> ByteCounter<W> {
+    pub(crate) fn new(inner: W) -> Self {
+        Self { inner, count: 0 }
+    }
+
+    pub(crate) fn into_count(self) -> usize {
+        self.count
+    }
+}
+
+impl<W> io::Write for ByteCounter<W>
+    where W: io::Write
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let res = self.inner.write(buf);
+        if let Ok(size) = res {
+            self.count += size;
+        }
+        res
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 /// Encoding error
 #[derive(Debug)]
 pub enum Error {
@@ -63,6 +96,10 @@ pub enum Error {
     BadLockTime(crate::LockTime),
     /// `VarInt` was encoded in a non-minimal way.
     NonMinimalVarInt,
+    /// Error decoding a pegin witness.
+    PeginWitness(crate::PeginWitnessDecoderError),
+    /// Error decoding a script witness.
+    Witness(crate::WitnessDecoderError),
 }
 
 impl fmt::Display for Error {
@@ -90,6 +127,8 @@ impl fmt::Display for Error {
             Error::HexVariableError(ref e) => write!(f, "Hex variable error: {}", e),
             Error::BadLockTime(ref lt) => write!(f, "Invalid locktime {}", lt),
             Error::NonMinimalVarInt => write!(f, "non-minimal varint"),
+            Self::PeginWitness(..) => f.write_str("error decoding pegin witness"),
+            Self::Witness(..) => f.write_str("error decoding script witness"),
         }
     }
 }
@@ -98,6 +137,8 @@ impl error::Error for Error {
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             Error::Secp256k1zkp(ref e) => Some(e),
+            Self::PeginWitness(ref e) => Some(e),
+            Self::Witness(ref e) => Some(e),
             _ => None,
         }
     }
@@ -236,6 +277,24 @@ impl Decodable for crate::locktime::Time {
         match crate::LockTime::consensus_decode(d)? {
             crate::LockTime::Seconds(t) => Ok(t),
             x @ crate::LockTime::Blocks(_) => Err(Error::BadLockTime(x)),
+        }
+    }
+}
+
+impl Encodable for crate::Witness {
+    fn consensus_encode<W: io::Write>(&self, e: W) -> Result<usize, Error> {
+        let mut counter = ByteCounter::new(e);
+        crate::encoding::encode_to_writer(self, &mut counter)?;
+        Ok(counter.into_count())
+    }
+}
+
+impl Decodable for crate::Witness {
+    fn consensus_decode<D: io::Read>(d: D) -> Result<Self, Error> {
+        match crate::encoding::decode_from_read_unbuffered(d) {
+            Ok(wit) => Ok(wit),
+            Err(crate::encoding::ReadError::Io(e)) => Err(Error::Io(e)),
+            Err(crate::encoding::ReadError::Decode(e)) => Err(Error::Witness(e)),
         }
     }
 }

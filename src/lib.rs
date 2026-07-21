@@ -28,6 +28,8 @@
 
 /// Re-export of bitcoin crate
 pub extern crate bitcoin;
+/// Re-export of bitcoin-consensus-encoding crate
+pub extern crate encoding;
 /// Re-export of `bitcoin_hashes` crate
 pub extern crate hashes;
 /// Re-export of hex crate
@@ -67,8 +69,6 @@ mod parse;
 pub mod pset;
 pub mod schnorr;
 pub mod script;
-#[cfg(feature = "serde")]
-mod serde_utils;
 pub mod sighash;
 pub mod taproot;
 mod transaction;
@@ -77,6 +77,8 @@ mod endian;
 pub mod genesis;
 
 // export everything at the top level so it can be used as `elements::Transaction` etc.
+use internals::array_vec::ArrayVec;
+
 pub use crate::address::{Address, AddressError, AddressParams};
 pub use crate::blind::{
     BlindError, ConfidentialTxOutError, CtLocation, CtLocationType, RangeProofMessage,
@@ -93,6 +95,21 @@ pub use crate::schnorr::{SchnorrSig, SchnorrSigError};
 pub use crate::script::Script;
 pub use crate::sighash::SchnorrSighashType;
 pub use crate::transaction::{
-    AssetIssuance, EcdsaSighashType, OutPoint, PeginData, PegoutData, Sequence, Transaction, TxIn,
-    TxInWitness, TxOut, TxOutWitness,
+    AssetIssuance, AssetIssuanceDecoder, AssetIssuanceDecoderError, AssetIssuanceEncoder,
+    EcdsaSighashType, OutPoint, PeginData, PeginDataDecoder, PeginDataEncoder, PeginWitness,
+    PeginWitnessDecoder, PeginWitnessDecoderError, PeginWitnessEncoder, PegoutData, Sequence,
+    SequenceDecoder, SequenceDecoderError, SequenceEncoder, Transaction, TransactionDecoder,
+    TransactionDecoderError, TransactionEncoder, TxIn, TxInDecoder, TxInDecoderError, TxInEncoder,
+    TxInWitness, TxInWitnessDecoder, TxInWitnessDecoderError, TxInWitnessEncoder, TxOut,
+    TxOutDecoder, TxOutDecoderError, TxOutEncoder, TxOutWitness, TxOutWitnessDecoder,
+    TxOutWitnessDecoderError, TxOutWitnessEncoder, Witness, WitnessDecoder, WitnessDecoderError,
+    WitnessEncoder,
 };
+
+// Encode a compact size to a slice without allocating
+pub(crate) fn compact_size_encode(value: usize) -> ArrayVec<u8, 9> {
+    use crate::encoding::Encoder as _;
+
+    let encoder = encoding::CompactSizeEncoder::new(value);
+    ArrayVec::from_slice(encoder.current_chunk())
+}

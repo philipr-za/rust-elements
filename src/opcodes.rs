@@ -20,8 +20,6 @@
 
 #![allow(non_camel_case_types)]
 
-#[cfg(feature = "serde")] use serde;
-
 use std::fmt;
 
 // Note: I am deliberately not implementing PartialOrd or Ord on the
@@ -859,16 +857,6 @@ impl From<u8> for All {
 impl fmt::Display for All {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self, f)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for All {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
     }
 }
 

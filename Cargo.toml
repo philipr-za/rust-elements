@@ -29,9 +29,10 @@ base64 = ["bitcoin/base64"]
 
 [dependencies]
 bech32 = "0.11.0"
-bitcoin = "0.32.2"
-hashes = { package = "bitcoin_hashes", version = "1.0", features = [ "hex" ] }
-internals = { package = "bitcoin-internals", version = "0.5" }
+bitcoin = { version = "0.32.102", default-features = false, features = [ "encoding", "std" ] }
+encoding = { package = "bitcoin-consensus-encoding", version = "1.1.0", default-features = false, features = [ "hex", "std" ] }
+hashes = { package = "bitcoin_hashes", version = "1.1", features = [ "hex" ] }
+internals = { package = "bitcoin-internals", version = "0.6" }
 secp256k1-zkp = { version = "0.11.0", features = ["global-context", "hashes"] }
 
 # Used for ContractHash::from_json_contract.
@@ -73,6 +74,7 @@ match_bool = "allow" # Adds extra indentation and LOC.
 match_same_arms = "allow" # Collapses things that are conceptually unrelated to each other.
 must_use_candidate = "allow" # Useful for audit but many false positives.
 similar_names = "allow" # Too many (subjectively) false positives.
+struct_field_names = "allow" # Dumb
 # Exhaustive list of pedantic clippy lints
 assigning_clones = "warn"
 bool_to_int_with_if = "warn"
@@ -167,7 +169,6 @@ stable_sort_primitive = "warn"
 str_split_at_newline = "warn"
 string_add_assign = "warn"
 struct_excessive_bools = "warn"
-struct_field_names = "warn"
 too_many_lines = "allow" # FIXME 14 triggers for this lint; probably most should be fixed
 transmute_ptr_to_ptr = "warn"
 trivially_copy_pass_by_ref = "warn"
@@ -191,7 +192,6 @@ zero_sized_map_values = "warn"
 [package.metadata.rbmt.lint]
 allowed_duplicates = [
     "bitcoin_hashes",
-    "bitcoin-internals",
     "hex-conservative",
 ]
 

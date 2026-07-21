@@ -22,6 +22,7 @@ use std::cmp::{PartialOrd, Ordering};
 use std::convert::TryFrom;
 use std::str::FromStr;
 use std::io::{Read, Write};
+use crate::encoding;
 use crate::error::ParseIntError;
 use crate::parse;
 
@@ -66,7 +67,6 @@ pub const LOCK_TIME_THRESHOLD: u32 = 500_000_000;
 /// ```
 #[allow(clippy::derive_ord_xor_partial_ord)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LockTime {
     /// A block height lock time value.
     ///
@@ -275,6 +275,36 @@ impl fmt::Display for LockTime {
     }
 }
 
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`LockTime`] type.
+    pub struct LockTimeEncoder<'e>(encoding::ArrayEncoder<4>);
+}
+
+impl encoding::Encode for LockTime {
+    type Encoder<'e> = LockTimeEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        LockTimeEncoder::new(encoding::ArrayEncoder::without_length_prefix(self.to_consensus_u32().to_le_bytes()))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`LockTime`] type.
+    #[derive(Default)]
+    pub struct LockTimeDecoder(encoding::ArrayDecoder<4>);
+
+    /// Decoder error for the [`LockTime`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct LockTimeDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "failed to decode locktime";
+
+    impl Decode for LockTime {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(LockTime::from_consensus(u32::from_le_bytes(bytes)))
+        }
+    }
+}
+
 impl Encodable for LockTime {
     #[inline]
     fn consensus_encode<W: Write>(&self, w: W) -> Result<usize, encode::Error> {
@@ -292,7 +322,6 @@ impl Decodable for LockTime {
 
 /// An absolute block height, guaranteed to always contain a valid height value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Height(u32);
 
 impl Height {
@@ -377,7 +406,6 @@ impl TryFrom<String> for Height {
 /// `to_consensus_u32()`. Said another way, `Time(x)` means 'x seconds since epoch' _not_ '(x -
 /// threshold) seconds since epoch'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Time(u32);
 
 impl Time {

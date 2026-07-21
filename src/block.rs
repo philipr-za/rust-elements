@@ -360,7 +360,6 @@ pub struct Block {
     /// Complete list of transaction in the block
     pub txdata: Vec<Transaction>,
 }
-serde_struct_impl!(Block, header, txdata);
 impl_consensus_encoding!(Block, header, txdata);
 
 impl Block {

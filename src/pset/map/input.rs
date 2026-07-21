@@ -32,7 +32,7 @@ use crate::pset::raw;
 use crate::pset::serialize;
 use crate::pset::{self, error, Error};
 use crate::{transaction::SighashTypeParseError, SchnorrSighashType};
-use crate::{AssetIssuance, BlockHash, EcdsaSighashType, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
+use crate::{AssetIssuance, BlockHash, EcdsaSighashType, PeginWitness, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
 use secp256k1_zkp::{self, Tweak, ZERO_TWEAK};
@@ -172,7 +172,6 @@ const PSBT_ELEMENTS_IN_BLINDED_ISSUANCE: u8 = 0x15;
 /// A key-value map for an input of the corresponding index in the unsigned
 /// transaction.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Input {
     /// The non-witness transaction this input spends from. Should only be
     /// [`std::option::Option::Some`] for inputs which spend non-segwit outputs or
@@ -184,10 +183,6 @@ pub struct Input {
     pub witness_utxo: Option<TxOut>,
     /// A map from public keys to their corresponding signature as would be
     /// pushed to the stack from a scriptSig or witness.
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_byte_values")
-    )]
     pub partial_sigs: BTreeMap<PublicKey, Vec<u8>>,
     /// The sighash type to be used for this input. Signatures for this input
     /// must use the sighash type.
@@ -198,38 +193,21 @@ pub struct Input {
     pub witness_script: Option<Script>,
     /// A map from public keys needed to sign this input to their corresponding
     /// master key fingerprints and derivation paths.
-    #[cfg_attr(feature = "serde", serde(with = "crate::serde_utils::btreemap_as_seq"))]
     pub bip32_derivation: BTreeMap<PublicKey, KeySource>,
     /// The finalized, fully-constructed scriptSig with signatures and any other
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Script>,
     /// The finalized, fully-constructed scriptWitness with signatures and any
     /// other scripts necessary for this input to pass validation.
-    pub final_script_witness: Option<Vec<Vec<u8>>>,
+    pub final_script_witness: Option<crate::Witness>,
     /// TODO: Proof of reserves commitment
     /// RIPEMD160 hash to preimage map
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_byte_values")
-    )]
     pub ripemd160_preimages: BTreeMap<ripemd160::Hash, Vec<u8>>,
     /// SHA256 hash to preimage map
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_byte_values")
-    )]
     pub sha256_preimages: BTreeMap<sha256::Hash, Vec<u8>>,
     /// HSAH160 hash to preimage map
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_byte_values")
-    )]
     pub hash160_preimages: BTreeMap<hash160::Hash, Vec<u8>>,
     /// HAS256 hash to preimage map
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_byte_values")
-    )]
     pub hash256_preimages: BTreeMap<sha256d::Hash, Vec<u8>>,
     /// (PSET) Prevout TXID of the input
     pub previous_txid: Txid,
@@ -244,13 +222,10 @@ pub struct Input {
     /// Serialized schnorr signature with sighash type for key spend
     pub tap_key_sig: Option<schnorr::SchnorrSig>,
     /// Map of `<xonlypubkey>|<leafhash>` with signature
-    #[cfg_attr(feature = "serde", serde(with = "crate::serde_utils::btreemap_as_seq"))]
     pub tap_script_sigs: BTreeMap<(XOnlyPublicKey, TapLeafHash), schnorr::SchnorrSig>,
     /// Map of Control blocks to Script version pair
-    #[cfg_attr(feature = "serde", serde(with = "crate::serde_utils::btreemap_as_seq"))]
     pub tap_scripts: BTreeMap<ControlBlock, (Script, LeafVersion)>,
     /// Map of tap root x only keys to origin info and leaf hashes contained in it
-    #[cfg_attr(feature = "serde", serde(with = "crate::serde_utils::btreemap_as_seq"))]
     pub tap_key_origins: BTreeMap<XOnlyPublicKey, (Vec<TapLeafHash>, KeySource)>,
     /// Taproot Internal key
     pub tap_internal_key: Option<XOnlyPublicKey>,
@@ -277,7 +252,7 @@ pub struct Input {
     /// Pegin Value
     pub pegin_value: Option<u64>,
     /// Pegin Witness
-    pub pegin_witness: Option<Vec<Vec<u8>>>,
+    pub pegin_witness: Option<PeginWitness>,
     /// Issuance inflation keys
     pub issuance_inflation_keys: Option<u64>,
     /// Issuance inflation keys commitment
@@ -303,16 +278,8 @@ pub struct Input {
     /// Whether the issuance is blinded
     pub blinded_issuance: Option<u8>,
     /// Other fields
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_as_seq_byte_values")
-    )]
     pub proprietary: BTreeMap<raw::ProprietaryKey, Vec<u8>>,
     /// Unknown key-value pairs for this input.
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "crate::serde_utils::btreemap_as_seq_byte_values")
-    )]
     pub unknown: BTreeMap<raw::Key, Vec<u8>>,
 }
 
@@ -660,7 +627,7 @@ impl Map for Input {
             }
             PSET_IN_FINAL_SCRIPTWITNESS => {
                 impl_pset_insert_pair! {
-                    self.final_script_witness <= <raw_key: _>|<raw_value: Vec<Vec<u8>>>
+                    self.final_script_witness <= <raw_key: _>|<raw_value: crate::Witness>
                 }
             }
             PSET_IN_RIPEMD160 => {
@@ -776,7 +743,7 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.pegin_value <= <raw_key: _> | <raw_value : u64>);
                         }
                         PSBT_ELEMENTS_IN_PEG_IN_WITNESS => {
-                            impl_pset_prop_insert_pair!(self.pegin_witness <= <raw_key: _> | <raw_value : Vec<Vec<u8>>>);
+                            impl_pset_prop_insert_pair!(self.pegin_witness <= <raw_key: _> | <raw_value : PeginWitness>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS => {
                             impl_pset_prop_insert_pair!(self.issuance_inflation_keys <= <raw_key: _> | <raw_value : u64>);

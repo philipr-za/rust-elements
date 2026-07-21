@@ -25,17 +25,120 @@ mod range_proof;
 mod surjection_proof;
 mod value;
 
-use core::fmt;
+use core::{fmt, slice};
 
 use secp256k1_zkp;
 
-pub use self::asset::{Asset, BlindingFactor as AssetBlindingFactor};
-pub use self::nonce::Nonce;
-pub use self::range_proof::RangeProof;
-pub use self::surjection_proof::SurjectionProof;
-pub use self::value::{BlindingFactor as ValueBlindingFactor, Value};
-use crate::encode;
+pub use self::asset::{
+    Asset, BlindingFactor as AssetBlindingFactor, Decoder as AssetDecoder,
+    DecoderError as AssetDecoderError, Encoder as AssetEncoder,
+};
+pub use self::nonce::{
+    Decoder as NonceDecoder, DecoderError as NonceDecoderError, Encoder as NonceEncoder, Nonce,
+};
+pub use self::range_proof::{
+    Decoder as RangeProofDecoder, DecoderError as RangeProofDecoderError,
+    Encoder as RangeProofEncoder, RangeProof,
+};
+pub use self::surjection_proof::{
+    Decoder as SurjectionProofDecoder, DecoderError as SurjectionProofDecoderError,
+    Encoder as SurjectionProofEncoder, SurjectionProof,
+};
+pub use self::value::{
+    BlindingFactor as ValueBlindingFactor, Decoder as ValueDecoder,
+    DecoderError as ValueDecoderError, Encoder as ValueEncoder, Value,
+};
 use crate::issuance::AssetId;
+use crate::{encode, encoding};
+
+#[derive(Clone, Debug)]
+enum CommitmentEncoder<'e> {
+    Null(u8),
+    Explicit8(Option<u8>, [u8; 8]),
+    Explicit32(Option<u8>, &'e [u8; 32]),
+    Explicit33([u8; 33]),
+}
+
+impl encoding::Encoder for CommitmentEncoder<'_> {
+    fn current_chunk(&self) -> &[u8] {
+        match *self {
+            Self::Null(ref prefix) => slice::from_ref(prefix),
+            Self::Explicit8(ref prefix, ref arr) => prefix.as_ref().map_or(arr, slice::from_ref),
+            Self::Explicit32(ref prefix, arr) => prefix.as_ref().map_or(arr, slice::from_ref),
+            Self::Explicit33(ref arr) => arr,
+        }
+    }
+
+    fn advance(&mut self) -> encoding::EncoderStatus {
+        match *self {
+            Self::Explicit8(ref mut prefix @ Some(_), _)
+            | Self::Explicit32(ref mut prefix @ Some(_), _) => {
+                *prefix = None;
+                encoding::EncoderStatus::HasMore
+            }
+            _ => encoding::EncoderStatus::Finished,
+        }
+    }
+}
+
+impl encoding::ExactSizeEncoder for CommitmentEncoder<'_> {
+    fn len(&self) -> usize {
+        match *self {
+            Self::Null(_) => 1,
+            Self::Explicit8(Some(_), _) => 9,
+            Self::Explicit8(None, _) => 8,
+            Self::Explicit32(Some(_), _) => 33,
+            Self::Explicit32(None, _) => 32,
+            Self::Explicit33(_) => 33,
+        }
+    }
+}
+
+/// Because the rust-secp256k1-zkp proof types have no `as_bytes()` method, we need
+/// to serialize them to a byte vector before encoding them.
+///
+/// This encoder accomplishes that -- this situation never happens in rust-bitcoin
+/// so there is no "owned bytes encoder" shipped with bitcoin-consensus-encoding.
+#[derive(Clone, Debug)]
+struct PrefixedByteVecEncoder {
+    prefix_encoder: Option<encoding::CompactSizeEncoder>,
+    data: Vec<u8>,
+}
+
+impl PrefixedByteVecEncoder {
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { prefix_encoder: Some(encoding::CompactSizeEncoder::new(data.len())), data }
+    }
+}
+
+impl encoding::Encoder for PrefixedByteVecEncoder {
+    fn current_chunk(&self) -> &[u8] {
+        if let Some(ref enc) = self.prefix_encoder {
+            return enc.current_chunk();
+        }
+        &self.data
+    }
+
+    fn advance(&mut self) -> encoding::EncoderStatus {
+        if let Some(ref mut enc) = self.prefix_encoder {
+            if enc.advance().has_finished() {
+                self.prefix_encoder = None;
+                if self.data.is_empty() {
+                    return encoding::EncoderStatus::Finished;
+                }
+            }
+            encoding::EncoderStatus::HasMore
+        } else {
+            encoding::EncoderStatus::Finished
+        }
+    }
+}
+
+impl encoding::ExactSizeEncoder for PrefixedByteVecEncoder {
+    fn len(&self) -> usize {
+        self.prefix_encoder.as_ref().map_or(0, encoding::CompactSizeEncoder::len) + self.data.len()
+    }
+}
 
 /// Error decoding hexadecimal string into tweak-like value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +199,7 @@ mod tests {
 
     use super::*;
     use crate::encode::Encodable as _;
+    use crate::encoding;
 
     const VALUE_EXPLICIT: [u8; 9] = [1, 0, 0, 0, 0, 0, 0, 3, 232];
 
@@ -140,6 +244,15 @@ mod tests {
     ];
 
     #[test]
+    fn prefixed_byte_encoder() {
+        assert_eq!(encoding::drain_to_vec(&mut PrefixedByteVecEncoder::new(vec![])), [0]);
+        assert_eq!(
+            encoding::drain_to_vec(&mut PrefixedByteVecEncoder::new(vec![1, 2, 3])),
+            [3, 1, 2, 3]
+        );
+    }
+
+    #[test]
     fn encode_length() {
         let val_encodings = [
             vec![0],
@@ -158,6 +271,9 @@ mod tests {
             assert_eq!(v.consensus_encode(&mut x).unwrap(), v.encoded_length());
             assert_eq!(x.len(), v.encoded_length());
             assert_eq!(x, *enc);
+
+            assert_eq!(encoding::encode_to_vec(v), *enc);
+            assert_eq!(encoding::decode_from_slice(enc), Ok(*v));
         }
 
         let nonce_encodings = [
@@ -177,6 +293,9 @@ mod tests {
             assert_eq!(v.consensus_encode(&mut x).unwrap(), v.encoded_length());
             assert_eq!(x.len(), v.encoded_length());
             assert_eq!(x, *enc);
+
+            assert_eq!(encoding::encode_to_vec(v), *enc);
+            assert_eq!(encoding::decode_from_slice(enc), Ok(*v));
         }
 
         let asset_encodings = [
@@ -196,6 +315,9 @@ mod tests {
             assert_eq!(v.consensus_encode(&mut x).unwrap(), v.encoded_length());
             assert_eq!(x.len(), v.encoded_length());
             assert_eq!(x, *enc);
+
+            assert_eq!(encoding::encode_to_vec(v), *enc);
+            assert_eq!(encoding::decode_from_slice(enc), Ok(*v));
         }
     }
 
@@ -207,6 +329,7 @@ mod tests {
         assert_eq!(x, Value::from_commitment(&commitment[..]).unwrap());
         commitment[0] = 42;
         assert!(Value::from_commitment(&commitment[..]).is_err());
+        assert_eq!(encoding::encode_to_vec(&x), VALUE_COMMITMENT1);
 
         let x = Asset::from_commitment(&ASSET_COMMITMENT1).unwrap();
         let commitment = x.commitment().unwrap();
@@ -214,6 +337,7 @@ mod tests {
         assert_eq!(x, Asset::from_commitment(&commitment[..]).unwrap());
         commitment[0] = 42;
         assert!(Asset::from_commitment(&commitment[..]).is_err());
+        assert_eq!(encoding::encode_to_vec(&x), ASSET_COMMITMENT1);
 
         let x = Nonce::from_commitment(&NONCE_COMMITMENT1).unwrap();
         let commitment = x.commitment().unwrap();
@@ -221,6 +345,7 @@ mod tests {
         assert_eq!(x, Nonce::from_commitment(&commitment[..]).unwrap());
         commitment[0] = 42;
         assert!(Nonce::from_commitment(&commitment[..]).is_err());
+        assert_eq!(encoding::encode_to_vec(&x), NONCE_COMMITMENT1);
     }
 
     #[cfg(feature = "serde")]

@@ -58,7 +58,6 @@ pub use self::map::{Global, GlobalTxData, Input, Output, PsbtSighashType, TapTre
 
 /// A Partially Signed Transaction.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PartiallySignedTransaction {
     /// The key-value pairs for all global data.
     pub global: Global,
@@ -307,13 +306,11 @@ impl PartiallySignedTransaction {
                         .unwrap_or(RangeProof::EMPTY),
                     script_witness: psetin
                         .final_script_witness
-                        .as_ref()
-                        .map(Vec::to_owned)
+                        .clone()
                         .unwrap_or_default(),
                     pegin_witness: psetin
                         .pegin_witness
-                        .as_ref()
-                        .map(Vec::to_owned)
+                        .clone()
                         .unwrap_or_default(),
                 },
             };

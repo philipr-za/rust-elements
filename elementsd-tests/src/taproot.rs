@@ -223,7 +223,7 @@ fn taproot_spend_test(
             hash_ty: sighash_ty,
         };
 
-        tx.input[0].witness.script_witness = vec![schnorr_sig.to_vec()];
+        tx.input[0].witness.script_witness.push(schnorr_sig.to_vec());
     } else {
         // script spend
         // try spending using leaf1
@@ -250,11 +250,9 @@ fn taproot_spend_test(
             hash_ty: sighash_ty,
         };
 
-        tx.input[0].witness.script_witness = vec![
-            schnorr_sig.to_vec(), // witness
-            script_ver.0.into_bytes(), // leaf script
-            ctrl_block.serialize(), // control block
-        ];
+        tx.input[0].witness.script_witness.push(schnorr_sig.to_vec()); // witness
+        tx.input[0].witness.script_witness.push(script_ver.0.into_bytes()); // leaf script
+        tx.input[0].witness.script_witness.push(ctrl_block.serialize()); // control block
     }
 
     let tx_hex = serialize_hex(&tx);

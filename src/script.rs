@@ -31,6 +31,7 @@ use secp256k1_zkp::{Verification, Secp256k1};
 #[cfg(feature = "serde")] use serde;
 
 use crate::encode::{self, Decodable, Encodable};
+use crate::encoding;
 use crate::{opcodes, ScriptHash, WScriptHash, PubkeyHash, WPubkeyHash};
 
 use bitcoin::PublicKey;
@@ -940,6 +941,36 @@ impl Decodable for Script {
     #[inline]
     fn consensus_decode<D: io::Read>(d: D) -> Result<Self, encode::Error> {
         Ok(Script(Decodable::consensus_decode(d)?))
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for a [`Script`].
+    #[derive(Clone, Debug)]
+    pub struct ScriptEncoder<'e>(encoding::PrefixedBytesEncoder<'e>);
+}
+
+impl encoding::Encode for Script {
+    type Encoder<'e> = ScriptEncoder<'e>;
+    fn encoder(&self) -> Self::Encoder<'_> {
+        ScriptEncoder::new(encoding::PrefixedBytesEncoder::new(self.as_bytes()))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for a [`Script`].
+    #[derive(Default)]
+    pub struct ScriptDecoder(encoding::ByteVecDecoder);
+
+    /// Decoder error for the [`Script`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct ScriptDecoderError(encoding::ByteVecDecoderError);
+    const ERROR_DISPLAY = "failed to decode script";
+
+    impl Decode for Script {
+        fn convert_inner(bytes) -> Result<_, _> {
+            Ok(Script::from(bytes))
+        }
     }
 }
 
