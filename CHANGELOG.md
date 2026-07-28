@@ -1,3 +1,39 @@
+# 0.27.0 - 2026-07-28
+
+This release updates several dependencies. It attempts to minimize API breakage beyond updating
+the dependencies. It should be considered a "transitional release" as we modernize the crate's API
+over the next several releases. In particular, this release introduces a new encoding paradigm but
+does not remove the old one, so depending on this may help users transition.
+
+Dependency updates:
+
+* **Bump MRSV to 1.74.0**
+  [#269](https://github.com/ElementsProject/rust-elements/pull/269)
+  [#265](https://github.com/ElementsProject/rust-elements/pull/265)
+* Update `bitcoin_hashes` dependency to newly-stable 1.0; improve array/slice APIs
+* Replace custom hex parsing with newly-stable `hex-conservative` 1.0
+  [#261](https://github.com/ElementsProject/rust-elements/pull/261)
+  [#272](https://github.com/ElementsProject/rust-elements/pull/272)
+* Introduce newly-stable `bitcoin-consensus-encoding` 1.0 crate and implement its `Encode` and
+  `Decode` traits on `Transaction` and subtypes.
+  [#288](https://github.com/ElementsProject/rust-elements/pull/288)
+
+
+* Remove `TxOut::MAX_MONEY` whose use is likely incorrect on a multi-asset chain
+  [#261](https://github.com/ElementsProject/rust-elements/pull/261)
+* pset: fix pegin/issuance flag handling in extract_tx
+  [#278](https://github.com/ElementsProject/rust-elements/pull/278)
+  [#279](https://github.com/ElementsProject/rust-elements/pull/279)
+  [#282](https://github.com/ElementsProject/rust-elements/pull/282)
+* Implement calculation of AssetId and genesis blocks
+  [#276](https://github.com/ElementsProject/rust-elements/pull/276)
+* Improve type safety for objects related to confidential transactions and asset issuance
+  [#286](https://github.com/ElementsProject/rust-elements/pull/286)
+  [#289](https://github.com/ElementsProject/rust-elements/pull/289)
+
+# 0.26.2 - 2026-06-15
+
+* Fix multiple panics related to slicing and blinding data validation
 
 # 0.26.1 - 2025-08-28
 
