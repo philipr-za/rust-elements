@@ -347,7 +347,7 @@ pub struct PeginDataDecoder {
             encoding::ArrayDecoder<8>,
             // asset ID
             ExactLengthDecoder,
-            encoding::ArrayDecoder<32>,
+            crate::AssetIdDecoder,
             // genesis hash
             ExactLengthDecoder,
             GenesisHashDecoder,
@@ -372,7 +372,7 @@ impl Default for PeginDataDecoder {
                     ExactLengthDecoder::new(8),
                     encoding::ArrayDecoder::new(),
                     ExactLengthDecoder::new(32),
-                    encoding::ArrayDecoder::new(),
+                    crate::AssetIdDecoder::default(),
                     ExactLengthDecoder::new(32),
                     GenesisHashDecoder::new(),
                 ),
@@ -388,6 +388,7 @@ impl Default for PeginDataDecoder {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum PeginDataDecoderErrorInner {
+    AssetId(crate::AssetIdDecoderError),
     ClaimScript(bitcoin::blockdata::script::ScriptBufDecoderError),
     GenesisHash(GenesisHashDecoderError),
     Length(ExactLengthDecoderError),
@@ -421,6 +422,7 @@ impl std::error::Error for PeginWitnessDecoderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         use PeginDataDecoderErrorInner as Inner;
         match self.inner {
+            Inner::AssetId(ref e) => Some(e),
             Inner::ClaimScript(ref e) => Some(e),
             Inner::GenesisHash(ref e) => Some(e),
             Inner::Length(ref e) => Some(e),
@@ -441,7 +443,7 @@ impl PeginWitnessDecoderError {
                 ExactLengthDecoderError,
                 UnexpectedEofError,
                 ExactLengthDecoderError,
-                UnexpectedEofError,
+                crate::AssetIdDecoderError,
                 ExactLengthDecoderError,
                 GenesisHashDecoderError,
             >,
@@ -464,7 +466,7 @@ impl PeginWitnessDecoderError {
             Dec3Err::Second(Dec6Err::Third(error)) =>
                 Self { field: "asset ID", inner: PeginDataDecoderErrorInner::Length(error) },
             Dec3Err::Second(Dec6Err::Fourth(error)) =>
-                Self { field: "asset ID", inner: PeginDataDecoderErrorInner::Eof(error) },
+                Self { field: "asset ID", inner: PeginDataDecoderErrorInner::AssetId(error) },
             Dec3Err::Second(Dec6Err::Fifth(error)) =>
                 Self { field: "genesis hash", inner: PeginDataDecoderErrorInner::Length(error) },
             Dec3Err::Second(Dec6Err::Sixth(error)) => Self {
@@ -514,7 +516,7 @@ impl encoding::Decoder for PeginDataDecoder {
 
         Ok(PeginData {
             value: u64::from_le_bytes(value),
-            asset_id: AssetId::from_byte_array(asset_id),
+            asset_id,
             genesis_hash,
             claim_script,
             transaction,

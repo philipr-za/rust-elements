@@ -14,8 +14,10 @@
 
 //! Asset Issuance
 
+use core::fmt;
 use std::io;
 
+use crate::confidential::AssetBlindingFactor;
 use crate::encode::{self, Encodable, Decodable};
 use crate::hashes::{hash_newtype, sha256, sha256d};
 use crate::fast_merkle_root::fast_merkle_root;
@@ -49,6 +51,158 @@ hashes::impl_serde_for_newtype!(ContractHash);
 impl_sha256_midstate_wrapper! {
     /// A hash of some data used as "asset entropy" to seed the ID of a new asset.
     pub struct AssetEntropy([u8; 32]);
+}
+
+impl AssetEntropy {
+    /// The all-zeroes "entropy" used for new issuances (vs reissuances).
+    pub const NEW_ISSUANCE: Self = Self([0; 32]);
+
+    /// Re-interpret the asset entropy as a contract hash.
+    pub fn into_contract_hash(self) -> ContractHash {
+        ContractHash::from_byte_array(self.0)
+    }
+}
+
+impl Encodable for AssetEntropy {
+    fn consensus_encode<W: io::Write>(&self, e: W) -> Result<usize, encode::Error> {
+       self.0.consensus_encode(e) 
+    }
+}
+
+impl Decodable for AssetEntropy {
+    fn consensus_decode<D: io::Read>(d: D) -> Result<Self, encode::Error> {
+        <[u8; 32]>::consensus_decode(d).map(Self)
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`AssetEntropyEncoder`] type.
+    #[derive(Clone, Debug)]
+    pub struct AssetEntropyEncoder<'e>(encoding::ArrayRefEncoder<'e, 32>);
+}
+
+impl encoding::Encode for AssetEntropy {
+    type Encoder<'e> = AssetEntropyEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AssetEntropyEncoder::new(encoding::ArrayRefEncoder::without_length_prefix(&self.0))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`AssetEntropy`] type.
+    #[derive(Default)]
+    pub struct AssetEntropyDecoder(encoding::ArrayDecoder<32>);
+
+    /// Decoder error for the [`AssetEntropy`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct AssetEntropyDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "error decoding asset entropy";
+
+    impl Decode for AssetEntropy {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(AssetEntropy::from_byte_array(bytes))
+        }
+    }
+}
+
+/// The blinding factor used to derive an asset commitment from an asset.
+///
+/// This type represents either [`Self::NEW_ISSUANCE`], indicating that an asset
+/// issuance is of a new asset, or for a reissuance, the [`AssetBlindingFactor`]
+/// used to blind the reissuance token (which must be blinded in order to be
+/// spent, due to a quirk in the Elements consensus code.)
+///
+/// Conceptually this can be thought of as an `Option<AssetBlindingFactor>`, except
+/// that there are no invalid values; [`AssetBlindingNonce::from_byte_array`] will
+/// always succeed. However, if an out-of-range value is used, the transaction will
+/// fail validation no matter what reissuance token is used.
+///
+/// Also, **unlike [`AssetBlindingFactor`], this type represents public data**. You
+/// can convert a blinding factor into a "blinding nonce", and while this conversion
+/// is technically a no-op, conceptually it represents choosing to make the blinding
+/// factor public.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Default)]
+pub struct AssetBlindingNonce([u8; 32]);
+
+impl AssetBlindingNonce {
+    /// A null blinding nonce, representing a new issuance (vs a reissuance).
+    pub const NEW_ISSUANCE: Self = Self([0; 32]);
+
+    /// Constructs this wrapper struct from raw bytes.
+    pub const fn from_byte_array(inner: [u8; 32]) -> Self {
+        Self(inner)
+    }
+
+    /// The raw bytes within the wrapper type.
+    pub const fn as_byte_array(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// The raw bytes within the wrapper type.
+    pub const fn to_byte_array(self) -> [u8; 32] {
+        self.0
+    }
+
+    /// Whether this is the null "new issuance" blinding nonce.
+    pub fn is_null(&self) -> bool {
+        // This is surprisingly annoying to make into a constfn, so we don't
+        // bother for now.
+        *self == Self::NEW_ISSUANCE
+    }
+
+    /// Reinterpret an asset blinding factor as a [`AssetBlindingNonce`].
+    ///
+    /// This is something of a dangerous function, since in general blinding factors should
+    /// be considered secret data, while blinding nonces are public (they are encoded on
+    /// the blockchain). So callers of this function should be sure that this is a blinding
+    /// factor that they intend to reveal.)
+    pub fn from_blinding_factor(bf: AssetBlindingFactor) -> Self {
+        Self(*bf.into_inner().as_ref())
+    }
+}
+
+impl Encodable for AssetBlindingNonce {
+    fn consensus_encode<W: io::Write>(&self, e: W) -> Result<usize, encode::Error> {
+       self.0.consensus_encode(e) 
+    }
+}
+
+impl Decodable for AssetBlindingNonce {
+    fn consensus_decode<D: io::Read>(d: D) -> Result<Self, encode::Error> {
+        <[u8; 32]>::consensus_decode(d).map(Self)
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`AssetBlindingNonce`] type.
+    #[derive(Clone, Debug)]
+    pub struct AssetBlindingNonceEncoder<'e>(encoding::ArrayRefEncoder<'e, 32>);
+}
+
+impl encoding::Encode for AssetBlindingNonce {
+    type Encoder<'e> = AssetBlindingNonceEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AssetBlindingNonceEncoder::new(encoding::ArrayRefEncoder::without_length_prefix(&self.0))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`AssetBlindingNonce`] type.
+    #[derive(Default)]
+    pub struct AssetBlindingNonceDecoder(encoding::ArrayDecoder<32>);
+
+    /// Decoder error for the [`AssetBlindingNonce`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct AssetBlindingNonceDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "error decoding asset blinding nonce";
+
+    impl Decode for AssetBlindingNonce {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(AssetBlindingNonce::from_byte_array(bytes))
+        }
+    }
 }
 
 impl_sha256_midstate_wrapper! {
@@ -186,6 +340,37 @@ impl Encodable for AssetId {
 impl Decodable for AssetId {
     fn consensus_decode<D: io::Read>(d: D) -> Result<Self, encode::Error> {
         Decodable::consensus_decode(d).map(Self)
+    }
+}
+
+encoding::encoder_newtype_exact! {
+    /// Encoder for the [`AssetId`] type.
+    #[derive(Clone, Debug)]
+    pub struct AssetIdEncoder<'e>(encoding::ArrayRefEncoder<'e, 32>);
+}
+
+impl encoding::Encode for AssetId {
+    type Encoder<'e> = AssetIdEncoder<'e>;
+
+    fn encoder(&self) -> Self::Encoder<'_> {
+        AssetIdEncoder::new(encoding::ArrayRefEncoder::without_length_prefix(&self.0))
+    }
+}
+
+decoder_newtype! {
+    /// Decoder for the [`AssetId`] type.
+    #[derive(Default)]
+    pub struct AssetIdDecoder(encoding::ArrayDecoder<32>);
+
+    /// Decoder error for the [`AssetId`] type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub struct AssetIdDecoderError(encoding::UnexpectedEofError);
+    const ERROR_DISPLAY = "error decoding asset ID";
+
+    impl Decode for AssetId {
+        fn convert_inner(bytes) -> Result<_, UnexpectedEofError> {
+            Ok(AssetId::from_byte_array(bytes))
+        }
     }
 }
 

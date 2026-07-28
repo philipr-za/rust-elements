@@ -21,7 +21,7 @@ use std::{
 };
 
 use crate::taproot::{ControlBlock, LeafVersion, TapNodeHash, TapLeafHash};
-use crate::{schnorr, AssetId, ContractHash};
+use crate::{schnorr, AssetId};
 
 use crate::{confidential, locktime};
 use crate::encode::{self, Decodable};
@@ -32,10 +32,10 @@ use crate::pset::raw;
 use crate::pset::serialize;
 use crate::pset::{self, error, Error};
 use crate::{transaction::SighashTypeParseError, SchnorrSighashType};
-use crate::{AssetIssuance, BlockHash, EcdsaSighashType, PeginWitness, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
+use crate::{AssetBlindingNonce, AssetIssuance, BlockHash, EcdsaSighashType, PeginWitness, RangeProof, Script, Transaction, TxIn, TxOut, Txid, SurjectionProof};
 use bitcoin::bip32::KeySource;
 use bitcoin::{PublicKey, key::XOnlyPublicKey};
-use secp256k1_zkp::{self, Tweak, ZERO_TWEAK};
+use secp256k1_zkp;
 
 use crate::{OutPoint, Sequence};
 
@@ -258,9 +258,9 @@ pub struct Input {
     /// Issuance inflation keys commitment
     pub issuance_inflation_keys_comm: Option<secp256k1_zkp::PedersenCommitment>,
     /// Issuance blinding nonce
-    pub issuance_blinding_nonce: Option<Tweak>,
+    pub issuance_blinding_nonce: Option<AssetBlindingNonce>,
     /// Issuance asset entropy
-    pub issuance_asset_entropy: Option<[u8; 32]>,
+    pub issuance_asset_entropy: Option<AssetEntropy>,
     /// input utxo rangeproof
     pub in_utxo_rangeproof: Option<RangeProof>,
     /// Proof that blinded issuance matches the commitment
@@ -524,19 +524,21 @@ impl Input {
     /// Compute the issuance asset ids from pset. This function does not check
     /// whether there is an issuance in this input. Returns (`asset_id`, `token_id`)
     pub fn issuance_ids(&self) -> (AssetId, AssetId) {
-        let issue_nonce = self.issuance_blinding_nonce.unwrap_or(ZERO_TWEAK);
-        let entropy = if issue_nonce == ZERO_TWEAK {
+        let issue_nonce = self.issuance_blinding_nonce.unwrap_or_default();
+        let entropy = if issue_nonce.is_null() {
             // new issuance
             let prevout = OutPoint {
                 txid: self.previous_txid,
                 vout: self.previous_output_index,
             };
-            let contract_hash =
-                ContractHash::from_byte_array(self.issuance_asset_entropy.unwrap_or_default());
+            let contract_hash = self
+                .issuance_asset_entropy
+                .unwrap_or_default()
+                .into_contract_hash();
             AssetId::generate_asset_entropy(prevout, contract_hash)
         } else {
             // re-issuance
-            AssetEntropy::from_byte_array(self.issuance_asset_entropy.unwrap_or_default())
+            self.issuance_asset_entropy.unwrap_or_default()
         };
         let asset_id = AssetId::from_entropy(entropy);
         let token_id =
@@ -558,7 +560,7 @@ impl Input {
     /// Get the issuance for this tx input
     pub fn asset_issuance(&self) -> AssetIssuance {
         AssetIssuance {
-            asset_blinding_nonce: *self.issuance_blinding_nonce.as_ref().unwrap_or(&ZERO_TWEAK),
+            asset_blinding_nonce: self.issuance_blinding_nonce.unwrap_or_default(),
             asset_entropy: self.issuance_asset_entropy.unwrap_or_default(),
             amount: match (self.issuance_value_amount, self.issuance_value_comm) {
                 (None, None) => confidential::Value::Null,
@@ -752,10 +754,10 @@ impl Map for Input {
                             impl_pset_prop_insert_pair!(self.issuance_inflation_keys_comm <= <raw_key: _> | <raw_value : secp256k1_zkp::PedersenCommitment>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE => {
-                            impl_pset_prop_insert_pair!(self.issuance_blinding_nonce <= <raw_key: _> | <raw_value : Tweak>);
+                            impl_pset_prop_insert_pair!(self.issuance_blinding_nonce <= <raw_key: _> | <raw_value : AssetBlindingNonce>);
                         }
                         PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY => {
-                            impl_pset_prop_insert_pair!(self.issuance_asset_entropy <= <raw_key: _> | <raw_value : [u8;32]>);
+                            impl_pset_prop_insert_pair!(self.issuance_asset_entropy <= <raw_key: _> | <raw_value : AssetEntropy>);
                         }
                         PSBT_ELEMENTS_IN_UTXO_RANGEPROOF => {
                             impl_pset_prop_insert_pair!(self.in_utxo_rangeproof <= <raw_key: _> | <raw_value : RangeProof>);
@@ -1182,11 +1184,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use secp256k1_zkp::ZERO_TWEAK;
-
-    use crate::confidential;
+    use crate::{AssetBlindingNonce, confidential};
     use crate::pset::PartiallySignedTransaction;
-    use crate::{AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
+    use crate::{AssetEntropy, AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
+
+    const DUMMY_ENTROPY: AssetEntropy = AssetEntropy::from_byte_array([1; 32]);
 
     // See `pset::map::output::tests::from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs`.
     // Same principle, but for the asset issuance rangeproofs in the input witnesses.
@@ -1194,8 +1196,8 @@ mod tests {
     fn from_tx_does_not_spuriously_set_proofs_on_explicit_issuance() {
         let txin = TxIn {
             asset_issuance: AssetIssuance {
-                asset_blinding_nonce: ZERO_TWEAK,
-                asset_entropy: [1u8; 32],
+                asset_blinding_nonce: AssetBlindingNonce::NEW_ISSUANCE,
+                asset_entropy: DUMMY_ENTROPY,
                 amount: confidential::Value::Explicit(1000),
                 inflation_keys: confidential::Value::Null,
             },

@@ -80,54 +80,30 @@ decoder_newtype! {
     /// Decoder for the [`AssetIssuance`] type.
     #[derive(Default)]
     pub struct AssetIssuanceDecoder(Decoder4<
-        ArrayDecoder<32>,
-        ArrayDecoder<32>,
+        crate::AssetBlindingNonceDecoder,
+        crate::AssetEntropyDecoder,
         crate::confidential::ValueDecoder,
         crate::confidential::ValueDecoder,
     >);
     /// Decoder error for the [`AssetIssuance`] type.
     #[derive(Clone, PartialEq, Eq, Debug)]
-    pub struct AssetIssuanceDecoderError(enum AssetIssuanceDecoderErrorInner {
-        Decode(Decoder4Error<
-            UnexpectedEofError,
-            UnexpectedEofError,
-            crate::confidential::ValueDecoderError,
-            crate::confidential::ValueDecoderError,
-        >),
-        InvalidTweak(secp256k1_zkp::Error),
-    });
+    pub struct AssetIssuanceDecoderError(Decoder4Error<
+        crate::AssetBlindingNonceDecoderError,
+        crate::AssetEntropyDecoderError,
+        crate::confidential::ValueDecoderError,
+        crate::confidential::ValueDecoderError,
+    >);
+    const ERROR_DISPLAY = "error decoding asset issuance";
 
     impl Decode for AssetIssuance {
         fn convert_inner(output) -> Result<_, AssetIssuanceDecoderError> {
             let (asset_blinding_nonce, asset_entropy, amount, inflation_keys) = output;
             Ok(AssetIssuance {
-                asset_blinding_nonce: secp256k1_zkp::Tweak::from_inner(asset_blinding_nonce)
-                    .map_err(AssetIssuanceDecoderErrorInner::InvalidTweak)
-                    .map_err(AssetIssuanceDecoderError)?,
+                asset_blinding_nonce,
                 asset_entropy,
                 amount,
                 inflation_keys,
             })
-        }
-    }
-}
-
-impl fmt::Display for AssetIssuanceDecoderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use AssetIssuanceDecoderErrorInner as Inner;
-        match self.0 {
-            Inner::Decode(_) => f.write_str("error decoding asset issuance"),
-            Inner::InvalidTweak(_) => f.write_str("asset issuance had out-of-range blinding nonce"),
-        }
-    }
-}
-
-impl std::error::Error for AssetIssuanceDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        use AssetIssuanceDecoderErrorInner as Inner;
-        match self.0 {
-            Inner::Decode(ref e) => Some(e),
-            Inner::InvalidTweak(ref e) => Some(e),
         }
     }
 }

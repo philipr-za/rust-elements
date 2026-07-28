@@ -28,16 +28,13 @@ use bitcoin::{self, VarInt};
 use bitcoin::hashes::Hash as _;
 use crate::hashes::{sha256d, HashEngine as _};
 
-use crate::{confidential, ContractHash};
+use crate::confidential;
 use crate::encode::{self, Encodable, Decodable};
-use crate::issuance::{AssetEntropy, AssetId};
+use crate::issuance::{AssetBlindingNonce, AssetEntropy, AssetId};
 use crate::opcodes;
 use crate::parse::impl_parse_str_through_int;
 use crate::script::Instruction;
 use crate::{LockTime, RangeProof, Script, SurjectionProof, Txid, Wtxid};
-use secp256k1_zkp::{
-    Tweak, ZERO_TWEAK,
-};
 
 pub use self::decoders::{AssetIssuanceDecoder, AssetIssuanceDecoderError, SequenceDecoder, SequenceDecoderError, TransactionDecoder, TransactionDecoderError, TxInDecoder, TxInDecoderError, TxInWitnessDecoder, TxInWitnessDecoderError, TxOutDecoder, TxOutDecoderError, TxOutWitnessDecoder, TxOutWitnessDecoderError};
 pub use self::encoders::{AssetIssuanceEncoder, SequenceEncoder, TransactionEncoder, TxInEncoder, TxInWitnessEncoder, TxOutEncoder, TxOutWitnessEncoder};
@@ -50,9 +47,9 @@ pub use self::witness::{Witness, WitnessDecoder, WitnessDecoderError, WitnessEnc
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub struct AssetIssuance {
     /// Zero for a new asset issuance; otherwise a blinding factor for the input
-    pub asset_blinding_nonce: Tweak,
+    pub asset_blinding_nonce: AssetBlindingNonce,
     /// Freeform entropy field
-    pub asset_entropy: [u8; 32],
+    pub asset_entropy: AssetEntropy,
     /// Amount of asset to issue
     pub amount: confidential::Value,
     /// Amount of inflation keys to issue
@@ -63,8 +60,8 @@ impl AssetIssuance {
     /// Create a null issuance.
     pub fn null() -> Self {
         AssetIssuance {
-            asset_blinding_nonce: ZERO_TWEAK,
-            asset_entropy: [0; 32],
+            asset_blinding_nonce: AssetBlindingNonce::NEW_ISSUANCE,
+            asset_entropy: AssetEntropy::NEW_ISSUANCE,
             amount: confidential::Value::Null,
             inflation_keys: confidential::Value::Null,
         }
@@ -548,13 +545,15 @@ impl TxIn {
     /// Compute the issuance asset ids from this [`TxIn`]. This function does not check
     /// whether there is an issuance in this input. Returns (`asset_id`, `token_id`)
     pub fn issuance_ids(&self) -> (AssetId, AssetId) {
-        let entropy = if self.asset_issuance.asset_blinding_nonce == ZERO_TWEAK {
-            let contract_hash =
-                ContractHash::from_byte_array(self.asset_issuance.asset_entropy);
+        let entropy = if self.asset_issuance.asset_blinding_nonce.is_null() {
+            let contract_hash = self
+                .asset_issuance
+                .asset_entropy
+                .into_contract_hash();
             AssetId::generate_asset_entropy(self.previous_output, contract_hash)
         } else {
             // re-issuance
-            AssetEntropy::from_byte_array(self.asset_issuance.asset_entropy)
+            self.asset_issuance.asset_entropy
         };
         let asset_id = AssetId::from_entropy(entropy);
         let token_id =
@@ -1200,7 +1199,6 @@ mod tests {
 
     use crate::{encode::serialize, pset::PartiallySignedTransaction};
     use crate::confidential;
-    use secp256k1_zkp::{self, ZERO_TWEAK};
     use crate::script;
 
     use super::*;
@@ -2045,8 +2043,8 @@ mod tests {
         assert_eq!(
             tx.input[0].asset_issuance,
             AssetIssuance {
-                asset_blinding_nonce: ZERO_TWEAK,
-                asset_entropy: [0; 32],
+                asset_blinding_nonce: AssetBlindingNonce::NEW_ISSUANCE,
+                asset_entropy: AssetEntropy::NEW_ISSUANCE,
                 amount: confidential::Value::from_commitment(
                     &[  0x09, 0x81, 0x65, 0x4e, 0xb5, 0xcc, 0xd9, 0x92,
                         0x7b, 0x8b, 0xea, 0x94, 0x99, 0x7d, 0xce, 0x4a,
