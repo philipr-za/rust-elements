@@ -169,6 +169,15 @@ const PSBT_ELEMENTS_IN_ASSET_PROOF: u8 = 0x14;
 /// Note that this does not indicate actual blinding status,
 /// but rather the expected blinding status prior to signing.
 const PSBT_ELEMENTS_IN_BLINDED_ISSUANCE: u8 = 0x15;
+
+/// Bit of [`Input::previous_output_index`] indicating that the input is a pegin.
+const OUTPOINT_PEGIN_FLAG: u32 = 1 << 30;
+/// Bit of [`Input::previous_output_index`] indicating that the input has an issuance.
+const OUTPOINT_ISSUANCE_FLAG: u32 = 1 << 31;
+/// The previous output index of a coinbase input, which is all 1's and therefore
+/// carries no pegin/issuance flags.
+const OUTPOINT_COINBASE_INDEX: u32 = 0xffff_ffff;
+
 /// A key-value map for an input of the corresponding index in the unsigned
 /// transaction.
 #[derive(Clone, Debug, PartialEq)]
@@ -486,11 +495,11 @@ impl Input {
         ret.final_script_witness = Some(txin.witness.script_witness);
 
         if txin.is_pegin {
-            ret.previous_output_index |= 1 << 30;
+            ret.previous_output_index |= OUTPOINT_PEGIN_FLAG;
             ret.pegin_witness = Some(txin.witness.pegin_witness);
         }
         if has_issuance {
-            ret.previous_output_index |= 1 << 31;
+            ret.previous_output_index |= OUTPOINT_ISSUANCE_FLAG;
             ret.issuance_blinding_nonce = Some(txin.asset_issuance.asset_blinding_nonce);
             ret.issuance_asset_entropy = Some(txin.asset_issuance.asset_entropy);
             match txin.asset_issuance.amount {
@@ -521,16 +530,32 @@ impl Input {
         ret
     }
 
+    /// The outpoint spent by this input.
+    ///
+    /// The pegin and issuance flags, which are stored in the high bits of
+    /// [`Input::previous_output_index`], are masked off; use [`Input::is_pegin`]
+    /// and [`Input::has_issuance`] to query them. As in Elements Core, an
+    /// all-1's index (a coinbase input) has no flags and is returned as-is.
+    pub fn previous_outpoint(&self) -> OutPoint {
+        let vout = if self.previous_output_index == OUTPOINT_COINBASE_INDEX {
+            self.previous_output_index
+        } else {
+            self.previous_output_index & !(OUTPOINT_PEGIN_FLAG | OUTPOINT_ISSUANCE_FLAG)
+        };
+        OutPoint {
+            txid: self.previous_txid,
+            vout,
+        }
+    }
+
     /// Compute the issuance asset ids from pset. This function does not check
     /// whether there is an issuance in this input. Returns (`asset_id`, `token_id`)
     pub fn issuance_ids(&self) -> (AssetId, AssetId) {
         let issue_nonce = self.issuance_blinding_nonce.unwrap_or_default();
         let entropy = if issue_nonce.is_null() {
-            // new issuance
-            let prevout = OutPoint {
-                txid: self.previous_txid,
-                vout: self.previous_output_index,
-            };
+            // new issuance; the entropy is computed over the outpoint without
+            // its pegin/issuance flags, as Elements Core does
+            let prevout = self.previous_outpoint();
             let contract_hash = self
                 .issuance_asset_entropy
                 .unwrap_or_default()
@@ -554,7 +579,7 @@ impl Input {
 
     /// If the Pset Input is pegin
     pub fn is_pegin(&self) -> bool {
-        self.previous_output_index & (1 << 30) != 0
+        self.previous_output_index & OUTPOINT_PEGIN_FLAG != 0
     }
 
     /// Get the issuance for this tx input
@@ -1184,11 +1209,68 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{AssetBlindingNonce, confidential};
     use crate::pset::PartiallySignedTransaction;
     use crate::{AssetEntropy, AssetIssuance, LockTime, Transaction, TxIn, TxInWitness};
 
     const DUMMY_ENTROPY: AssetEntropy = AssetEntropy::from_byte_array([1; 32]);
+
+    fn dummy_outpoint() -> OutPoint {
+        OutPoint::new(Txid::from_byte_array([7; 32]), 3)
+    }
+
+    /// A pegin input which also carries a (new) asset issuance, so that both
+    /// flag bits are set on the PSET previous output index.
+    fn pegin_issuance_txin() -> TxIn {
+        TxIn {
+            previous_output: dummy_outpoint(),
+            is_pegin: true,
+            asset_issuance: AssetIssuance {
+                asset_blinding_nonce: AssetBlindingNonce::NEW_ISSUANCE,
+                asset_entropy: DUMMY_ENTROPY,
+                amount: confidential::Value::Explicit(1000),
+                inflation_keys: confidential::Value::Explicit(1),
+            },
+            witness: TxInWitness::empty(),
+            ..TxIn::default()
+        }
+    }
+
+    #[test]
+    fn previous_outpoint_masks_flags() {
+        let txin = pegin_issuance_txin();
+        let input = Input::from_txin(txin.clone());
+
+        // The flags live in the PSET index...
+        assert_eq!(
+            input.previous_output_index,
+            3 | OUTPOINT_PEGIN_FLAG | OUTPOINT_ISSUANCE_FLAG,
+        );
+        assert!(input.is_pegin());
+        assert!(input.has_issuance());
+        // ...but not in the outpoint.
+        assert_eq!(input.previous_outpoint(), dummy_outpoint());
+        assert_eq!(input.previous_outpoint(), txin.previous_output);
+    }
+
+    #[test]
+    fn previous_outpoint_leaves_coinbase_index_alone() {
+        // An all-1's index is a coinbase input, not a flagged index.
+        let input = Input::from_prevout(OutPoint::null());
+        assert_eq!(input.previous_output_index, OUTPOINT_COINBASE_INDEX);
+        assert_eq!(input.previous_outpoint(), OutPoint::null());
+    }
+
+    // The asset entropy commits to the outpoint being spent, so it must be computed
+    // over the unflagged index, exactly as `TxIn::issuance_ids` does.
+    #[test]
+    fn issuance_ids_ignore_outpoint_flags() {
+        let txin = pegin_issuance_txin();
+        let input = Input::from_txin(txin.clone());
+
+        assert_eq!(input.issuance_ids(), txin.issuance_ids());
+    }
 
     // See `pset::map::output::tests::from_tx_does_not_spuriously_set_proofs_on_unblinded_outputs`.
     // Same principle, but for the asset issuance rangeproofs in the input witnesses.

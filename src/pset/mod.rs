@@ -46,7 +46,7 @@ use crate::{
     RangeProof, SurjectionProof, TxOutSecrets,
 };
 use crate::{
-    LockTime, OutPoint, Sequence, SurjectionInput, Transaction, TxIn,
+    LockTime, Sequence, SurjectionInput, Transaction, TxIn,
     TxInWitness, TxOut, TxOutWitness, Txid, CtLocation, CtLocationType,
 };
 use secp256k1_zkp::rand::{CryptoRng, RngCore};
@@ -285,14 +285,12 @@ impl PartiallySignedTransaction {
         let mut outputs = vec![];
 
         for psetin in &self.inputs {
-            let prev_index = if psetin.previous_output_index == 0xffff_ffff {
-                // special-case coinbase inputs, which do not have flags
-                psetin.previous_output_index
-            } else {
-                psetin.previous_output_index & !((1u32 << 30) | (1 << 31))
-            };
             let txin = TxIn {
-                previous_output: OutPoint::new(psetin.previous_txid, prev_index),
+                // `previous_outpoint` masks off the pegin/issuance flags, which are
+                // tracked by `is_pegin` and `asset_issuance` instead. Leaving them in
+                // the outpoint would make `SighashCache` hash a different value than
+                // Elements Core does.
+                previous_output: psetin.previous_outpoint(),
                 is_pegin: psetin.is_pegin(),
                 script_sig: psetin.final_script_sig.clone().unwrap_or_default(),
                 sequence: psetin.sequence.unwrap_or(Sequence::MAX),
@@ -786,6 +784,7 @@ impl Decodable for PartiallySignedTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::OutPoint;
     use hex::DisplayHex as _;
 
     #[track_caller]
@@ -952,6 +951,56 @@ mod tests {
         // };
         // pset.add_output(Output::from_txout(txout));
         // println!("{}", encode::serialize_hex(&pset));
+    }
+
+    // https://github.com/ElementsProject/rust-elements/issues/292
+    //
+    // The pegin/issuance flags belong in `TxIn::is_pegin`/`TxIn::asset_issuance`,
+    // not in the outpoint. If `extract_tx` left them in the vout, `SighashCache`
+    // would commit to a different outpoint than Elements Core does and the
+    // resulting signatures would be rejected.
+    #[test]
+    fn extract_tx_masks_pegin_flag_from_outpoint() {
+        use crate::sighash::SighashCache;
+        use crate::{EcdsaSighashType, Script};
+
+        let tx: Transaction = hex_deserialize!(include_str!("../../tests/data/1in2out_pegin.hex"));
+        let txin = &tx.input[0];
+        assert!(txin.is_pegin());
+        assert_eq!(txin.previous_output.vout & ((1 << 30) | (1 << 31)), 0);
+
+        let pset = PartiallySignedTransaction::from_tx(tx.clone());
+        // The PSET representation carries the flag in the index...
+        assert_eq!(
+            pset.inputs()[0].previous_output_index,
+            txin.previous_output.vout | (1 << 30),
+        );
+
+        // ...but the extracted transaction must not.
+        let extracted = pset.extract_tx().unwrap();
+        let extracted_txin = &extracted.input[0];
+        assert!(extracted_txin.is_pegin);
+        assert_eq!(extracted_txin.previous_output, txin.previous_output);
+        assert_eq!(extracted, tx);
+        assert_eq!(extracted.txid(), tx.txid());
+
+        // And the flag bits really are sighash-relevant: had they been left in the
+        // vout, the segwit v0 sighash (and hence the signature) would differ.
+        let script_code = Script::from_hex_no_prefix(
+            "76a914d2bcde17e7744f6377466ca1bd35d212954674c888ac",
+        ).unwrap();
+        let value = confidential::Value::Explicit(100_000);
+        let sighash = |tx: &Transaction| {
+            SighashCache::new(tx).segwitv0_sighash(
+                0,
+                &script_code,
+                value,
+                EcdsaSighashType::All,
+            )
+        };
+        let mut flagged = extracted.clone();
+        flagged.input[0].previous_output.vout |= 1 << 30;
+        assert_ne!(sighash(&flagged), sighash(&extracted));
     }
 
     #[test]
