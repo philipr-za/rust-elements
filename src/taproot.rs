@@ -711,7 +711,7 @@ impl ControlBlock {
     /// output key, full verification must also execute the script with witness data
     pub fn verify_taproot_commitment<C: secp256k1_zkp::Verification>(
         &self,
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         output_key: &TweakedPublicKey,
         script: &Script,
     ) -> bool {
@@ -737,7 +737,6 @@ impl ControlBlock {
         let tweak = Scalar::from_be_bytes(tweak.to_byte_array()).expect("hash value greater than curve order");
 
         self.internal_key.tweak_add_check(
-            secp,
             output_key.as_inner(),
             self.output_key_parity,
             tweak,

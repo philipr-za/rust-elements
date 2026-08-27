@@ -286,14 +286,19 @@ impl AddAssign for BlindingFactor {
             // Since libsecp does not expose low level APIs
             // for scalar arethematic, we need to abuse secret key
             // operations for this
-            let sk2 = SecretKey::from_slice(self.into_inner().as_ref()).expect("Valid key");
-            let sk = SecretKey::from_slice(other.into_inner().as_ref()).expect("Valid key");
+            let mut sk_bytes = [0u8; 32];
+            sk_bytes.copy_from_slice(other.into_inner().as_ref());
+            let mut sk2_bytes = [0u8; 32];
+            sk2_bytes.copy_from_slice(self.into_inner().as_ref());
+            let sk2 = SecretKey::from_secret_bytes(sk2_bytes).expect("Valid key");
+            let sk = SecretKey::from_secret_bytes(sk_bytes).expect("Valid key");
             // The only reason that secret key addition can fail
             // is when the keys add up to zero since we have already checked
             // keys are in valid secret keys
             match sk.add_tweak(&sk2.into()) {
-                Ok(sk_tweaked) =>
-                    *self = Self::from_slice(sk_tweaked.as_ref()).expect("Valid Tweak"),
+                Ok(sk_tweaked) => {
+                    *self = Self::from_slice(sk_tweaked.as_ref()).expect("Valid Tweak")
+                },
                 Err(_) => *self = Self::zero(),
             }
         }
@@ -307,7 +312,9 @@ impl Neg for BlindingFactor {
         if self.0.as_ref() == &[0u8; 32] {
             self
         } else {
-            let sk = SecretKey::from_slice(self.into_inner().as_ref()).expect("Valid key").negate();
+            let mut sk_bytes = [0u8; 32];
+            sk_bytes.copy_from_slice(self.into_inner().as_ref());
+            let sk = SecretKey::from_secret_bytes(sk_bytes).expect("Valid key").negate();
             Self::from_slice(sk.as_ref()).expect("Valid Tweak")
         }
     }

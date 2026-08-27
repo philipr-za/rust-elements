@@ -52,11 +52,11 @@ impl Nonce {
     /// Similar to [`Self::new_confidential`], but with a given `ephemeral_sk`
     /// instead of sampling it from rng.
     pub fn with_ephemeral_sk<C: Signing>(
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         ephemeral_sk: SecretKey,
         receiver_blinding_pk: &ConfInner,
     ) -> (Self, SecretKey) {
-        let sender_pk = ConfInner::from_secret_key(secp, &ephemeral_sk);
+        let sender_pk = ConfInner::from_secret_key(&ephemeral_sk);
         let shared_secret = Self::make_shared_secret(receiver_blinding_pk, &ephemeral_sk);
         (Self::Confidential(sender_pk), shared_secret)
     }
@@ -83,8 +83,9 @@ impl Nonce {
 
             sha256d::Hash::hash(&dh_secret).to_byte_array()
         };
-
-        SecretKey::from_slice(&shared_secret[..32]).expect("always has exactly 32 bytes")
+        let mut sk_bytes = [0u8; 32];
+        sk_bytes.copy_from_slice(&shared_secret[..32]);
+        SecretKey::from_secret_bytes(sk_bytes).expect("always has exactly 32 bytes")
     }
 
     /// Serialized length, in bytes
