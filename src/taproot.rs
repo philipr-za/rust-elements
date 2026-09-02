@@ -22,6 +22,7 @@ use crate::Script;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use secp256k1_zkp::{self, Secp256k1, Scalar};
 use crate::encode::Encodable;
+use crate::internals::slice::SliceExt;
 
 // Taproot test vectors from BIP-341 state the hashes without any reversing
 sha256t_hash_newtype! {
@@ -56,7 +57,7 @@ impl TapTweakHash {
     ) -> TapTweakHash {
         let mut eng = TapTweakHash::engine();
         // always hash the key
-        eng.input(&internal_key.serialize());
+        eng.input(&internal_key.to_byte_array());
         if let Some(h) = merkle_root {
             eng.input(h.as_ref());
         } else {
@@ -632,7 +633,9 @@ impl ControlBlock {
         let output_key_parity = secp256k1_zkp::Parity::from_u8(sl[0] & 1)
             .expect("Parity is a single bit because it is masked by 0x01");
         let leaf_version = LeafVersion::from_u8(sl[0] & TAPROOT_LEAF_MASK)?;
-        let internal_key = UntweakedPublicKey::from_slice(&sl[1..TAPROOT_CONTROL_BASE_SIZE])
+        let internal_key_bytes = SliceExt::get_array::<32>(sl, 1)
+            .expect("slice is at least TAPROOT_CONTROL_BASE_SIZE bytes, checked above");
+        let internal_key = UntweakedPublicKey::from_byte_array(*internal_key_bytes)
             .map_err(TaprootError::InvalidInternalKey)?;
         let merkle_branch = TaprootMerkleBranch::from_slice(&sl[TAPROOT_CONTROL_BASE_SIZE..])?;
         Ok(ControlBlock {
@@ -654,7 +657,7 @@ impl ControlBlock {
         let first_byte: u8 = self.output_key_parity.to_u8() | self.leaf_version.as_u8();
         let mut bytes_written = 0;
         bytes_written += writer.write(&[first_byte])?;
-        bytes_written += writer.write(&self.internal_key.serialize())?;
+        bytes_written += writer.write(&self.internal_key.to_byte_array())?;
         bytes_written += self.merkle_branch.encode(&mut writer)?;
         Ok(bytes_written)
     }
@@ -675,7 +678,7 @@ impl ControlBlock {
     /// output key, full verification must also execute the script with witness data
     pub fn verify_taproot_commitment<C: secp256k1_zkp::Verification>(
         &self,
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         output_key: &TweakedPublicKey,
         script: &Script,
     ) -> bool {
@@ -701,7 +704,6 @@ impl ControlBlock {
         let tweak = Scalar::from_be_bytes(tweak.to_byte_array()).expect("hash value greater than curve order");
 
         self.internal_key.tweak_add_check(
-            secp,
             output_key.as_inner(),
             self.output_key_parity,
             tweak,
@@ -762,7 +764,7 @@ pub enum TaprootBuilderError {
     /// Two nodes at depth 0 are not allowed
     OverCompleteTree,
     /// Invalid taproot internal key
-    InvalidInternalKey(secp256k1_zkp::UpstreamError),
+    InvalidInternalKey(crate::secp256k1::Error),
     /// Called finalize on an incomplete tree
     IncompleteTree,
     /// Called finalize on a empty tree
@@ -812,7 +814,7 @@ pub enum TaprootError {
     /// Invalid Control Block Size
     InvalidControlBlockSize(usize),
     /// Invalid taproot internal key
-    InvalidInternalKey(secp256k1_zkp::UpstreamError),
+    InvalidInternalKey(crate::secp256k1::Error),
     /// Empty `TapTree`
     EmptyTree,
 }

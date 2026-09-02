@@ -63,7 +63,7 @@ pub enum AddressError {
     InvalidSegwitV0Encoding,
 
     /// An invalid blinding pubkey was encountered.
-    InvalidBlindingPubKey(secp256k1_zkp::UpstreamError),
+    InvalidBlindingPubKey(crate::secp256k1::Error),
 
     /// The length (in bytes) of the object was not correct.
     InvalidLength(usize),
@@ -356,7 +356,7 @@ impl Address {
                 let (output_key, _parity) = internal_key.tap_tweak(secp, merkle_root);
                 Payload::WitnessProgram {
                     version: Fe32::P,
-                    program: output_key.into_inner().serialize().to_vec(),
+                    program: output_key.into_inner().to_byte_array().to_vec(),
                 }
             },
             blinding_pubkey: blinder,
@@ -375,7 +375,7 @@ impl Address {
             params,
             payload: Payload::WitnessProgram {
                 version: Fe32::P,
-                program: output_key.into_inner().serialize().to_vec(),
+                program: output_key.into_inner().to_byte_array().to_vec(),
             },
             blinding_pubkey: blinder,
         }
@@ -501,15 +501,13 @@ impl Address {
         // When blinded, the structure is:
         // <1: blinding prefix> <1: regular prefix> <33: blinding pubkey> <20: hash160>
 
-        let (blinding_prefix, blinded_data) = match data.split_first() {
-            Some(v) => v,
-            None => return Err(len_error),
+        let Some((blinding_prefix, blinded_data)) = data.split_first() else {
+            return Err(len_error);
         };
 
         let (prefix, blinding_pubkey, hash) = if *blinding_prefix == params.blinded_prefix {
-            let (prefix, pubkey_and_hash) = match blinded_data.split_first() {
-                Some(v) => v,
-                None => return Err(len_error),
+            let Some((prefix, pubkey_and_hash)) = blinded_data.split_first() else {
+                return Err(len_error);
             };
 
             let pubkey_and_hash = <&[u8; 53]>::try_from(pubkey_and_hash).map_err(|_| len_error)?;
@@ -821,7 +819,7 @@ mod test {
         let blinder = PublicKey::from_str(blinder_hex).unwrap();
         let sk_wif = "cVt4o7BGAig1UXywgGSmARhxMdzP5qvQsxKkSsc1XEkw3tDTQFpy";
         let sk = key::PrivateKey::from_wif(sk_wif).unwrap();
-        let pk = sk.public_key(&Secp256k1::new());
+        let pk = sk.public_key(&crate::secp256k1::Secp256k1::new());
         let script: Script = vec![1u8, 2, 42, 255, 196].into();
 
         let vectors = [

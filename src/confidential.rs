@@ -497,11 +497,11 @@ impl Nonce {
     /// Similar to [`Nonce::new_confidential`], but with a given `ephemeral_sk`
     /// instead of sampling it from rng.
     pub fn with_ephemeral_sk<C: Signing>(
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         ephemeral_sk: SecretKey,
         receiver_blinding_pk: &PublicKey
     ) -> (Self, SecretKey) {
-        let sender_pk = PublicKey::from_secret_key(secp, &ephemeral_sk);
+        let sender_pk = PublicKey::from_secret_key(&ephemeral_sk);
         let shared_secret = Self::make_shared_secret(receiver_blinding_pk, &ephemeral_sk);
         (Nonce::Confidential(sender_pk), shared_secret)
     }
@@ -534,7 +534,7 @@ impl Nonce {
             sha256d::Hash::hash(&dh_secret).to_byte_array()
         };
 
-        SecretKey::from_slice(&shared_secret[..32]).expect("always has exactly 32 bytes")
+        SecretKey::from_secret_bytes(shared_secret).expect("SHA256d output is a valid scalar")
     }
 
     /// Serialized length, in bytes
@@ -548,9 +548,7 @@ impl Nonce {
 
     /// Create from commitment.
     pub fn from_commitment(bytes: &[u8]) -> Result<Self, encode::Error> {
-        Ok(Nonce::Confidential(
-            PublicKey::from_slice(bytes).map_err(secp256k1_zkp::Error::Upstream)?,
-        ))
+        Ok(Nonce::Confidential(PublicKey::from_slice(bytes)?))
     }
 
     /// Check if the object is null.
@@ -929,13 +927,13 @@ impl AddAssign for ValueBlindingFactor {
             // Since libsecp does not expose low level APIs
             // for scalar arethematic, we need to abuse secret key
             // operations for this
-            let sk2 = SecretKey::from_slice(self.into_inner().as_ref()).expect("Valid key");
-            let sk = SecretKey::from_slice(other.into_inner().as_ref()).expect("Valid key");
+            let sk2 = SecretKey::from_secret_bytes(*self.into_inner().as_ref()).expect("Valid key");
+            let sk = SecretKey::from_secret_bytes(*other.into_inner().as_ref()).expect("Valid key");
             // The only reason that secret key addition can fail
             // is when the keys add up to zero since we have already checked
             // keys are in valid secret keys
             match sk.add_tweak(&sk2.into()) {
-                Ok(sk_tweaked) => *self = ValueBlindingFactor::from_slice(sk_tweaked.as_ref()).expect("Valid Tweak"),
+                Ok(sk_tweaked) => *self = ValueBlindingFactor::from_slice(&sk_tweaked.to_secret_bytes()).expect("Valid Tweak"),
                 Err(_) =>  *self = Self::zero(),
             }
         }
@@ -949,8 +947,8 @@ impl Neg for ValueBlindingFactor {
         if self.0.as_ref() == &[0u8; 32] {
             self
         } else {
-            let sk = SecretKey::from_slice(self.into_inner().as_ref()).expect("Valid key").negate();
-            ValueBlindingFactor::from_slice(sk.as_ref()).expect("Valid Tweak")
+            let sk = SecretKey::from_secret_bytes(*self.into_inner().as_ref()).expect("Valid key").negate();
+            ValueBlindingFactor::from_slice(&sk.to_secret_bytes()).expect("Valid Tweak")
         }
     }
 }

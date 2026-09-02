@@ -6,7 +6,8 @@ extern crate rand;
 
 use crate::{setup, Call};
 
-use bitcoin::{self, Address, Amount};
+use elementsd::bitcoincore_rpc::bitcoin as rpc_bitcoin;
+use elementsd::bitcoincore_rpc::bitcoin::{Address, Amount};
 use elements::hex::ToHex;
 use elements::encode::serialize;
 use elements::hashes::Hash;
@@ -15,7 +16,7 @@ use elements::{AssetId, ContractHash};
 use elementsd::bitcoincore_rpc::jsonrpc::serde_json::json;
 use elementsd::bitcoincore_rpc::RpcApi;
 use elementsd::ElementsD;
-use rand::distributions::{Distribution, Uniform};
+use rand::distr::{Distribution, Uniform};
 use std::str::FromStr;
 
 #[test]
@@ -103,12 +104,12 @@ fn tx_pegin() {
         .send_to_address(&address, amount, None, None, None, None, None, None)
         .unwrap();
     let tx = bitcoind.client.get_raw_transaction(&txid, None).unwrap();
-    let tx_bytes = bitcoin::consensus::serialize(&tx);
+    let tx_bytes = rpc_bitcoin::consensus::serialize(&tx);
     let vout = tx
         .output
         .iter()
         .position(|o| {
-            let addr = Address::from_script(&o.script_pubkey, bitcoin::Network::Regtest);
+            let addr = Address::from_script(&o.script_pubkey, rpc_bitcoin::Network::Regtest);
             addr.unwrap().to_string() == pegin_address
         })
         .unwrap();
@@ -149,8 +150,8 @@ fn psbt_rtt(elementsd: &ElementsD, base64: &str) {
 
     assert_eq!(a, b);
 
-    let mut rng = rand::thread_rng();
-    let die = Uniform::from(0..b_bytes.len());
+    let mut rng = rand::rng();
+    let die = Uniform::new(0, b_bytes.len()).unwrap();
     for _ in 0..1_000 {
         let i = die.sample(&mut rng);
         // ensuring decode prints all data inside psbt, randomly changing a byte,

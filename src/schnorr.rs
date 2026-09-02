@@ -19,6 +19,7 @@
 
 use std::fmt;
 
+use crate::internals::slice::SliceExt;
 use crate::taproot::{TapNodeHash, TapTweakHash};
 use crate::SchnorrSighashType;
 use secp256k1_zkp::{self, constants::SCHNORR_SIGNATURE_SIZE, Secp256k1, Verification};
@@ -88,13 +89,13 @@ impl TapTweak for UntweakedPublicKey {
     /// The tweaked key and its parity.
     fn tap_tweak<C: Verification>(
         self,
-        secp: &Secp256k1<C>,
+        _secp: &Secp256k1<C>,
         merkle_root: Option<TapNodeHash>,
     ) -> (TweakedPublicKey, secp256k1_zkp::Parity) {
         let tweak = TapTweakHash::from_key_and_tweak(self, merkle_root).to_scalar();
-        let (output_key, parity) = self.add_tweak(secp, &tweak).expect("Tap tweak failed");
+        let (output_key, parity) = self.add_tweak(&tweak).expect("Tap tweak failed");
 
-        debug_assert!(self.tweak_add_check(secp, &output_key, parity, tweak));
+        debug_assert!(self.tweak_add_check(&output_key, parity, tweak));
         (TweakedPublicKey(output_key), parity)
     }
 
@@ -121,10 +122,10 @@ impl TapTweak for UntweakedKeypair {
     ///
     /// # Returns
     /// The tweaked key and its parity.
-    fn tap_tweak<C: Verification>(self, secp: &Secp256k1<C>, merkle_root: Option<TapNodeHash>) -> TweakedKeypair {
+    fn tap_tweak<C: Verification>(self, _secp: &Secp256k1<C>, merkle_root: Option<TapNodeHash>) -> TweakedKeypair {
         let (pubkey, _parity) = XOnlyPublicKey::from_keypair(&self);
         let tweak = TapTweakHash::from_key_and_tweak(pubkey, merkle_root).to_scalar();
-        let tweaked = self.add_xonly_tweak(secp, &tweak).expect("Tap tweak failed");
+        let tweaked = self.add_xonly_tweak(&tweak).expect("Tap tweak failed");
         TweakedKeypair(tweaked)
     }
 
@@ -217,18 +218,19 @@ impl SchnorrSig {
 
     /// Deserialize from slice
     pub fn from_slice(sl: &[u8]) -> Result<Self, SchnorrSigError> {
-        if sl.len() == SCHNORR_SIGNATURE_SIZE {
+        if let Some((sig, [])) = SliceExt::split_first_chunk::<SCHNORR_SIGNATURE_SIZE>(sl) {
             // default type
-            let sig = secp256k1_zkp::schnorr::Signature::from_slice(sl)
-                .map_err(|_| SchnorrSigError::InvalidSchnorrSig)?;
+            let sig = secp256k1_zkp::schnorr::Signature::from_byte_array(*sig);
             return Ok( SchnorrSig { sig, hash_ty : SchnorrSighashType::Default });
         }
         let (hash_ty, sig) = sl.split_last()
             .ok_or(SchnorrSigError::InvalidSchnorrSig)?;
         let hash_ty = SchnorrSighashType::from_u8(*hash_ty)
             .ok_or(SchnorrSigError::InvalidSighashType(*hash_ty))?;
-        let sig = secp256k1_zkp::schnorr::Signature::from_slice(sig)
-            .map_err(|_| SchnorrSigError::InvalidSchnorrSig)?;
+        let sig = match SliceExt::split_first_chunk::<SCHNORR_SIGNATURE_SIZE>(sig) {
+            Some((sig, [])) => secp256k1_zkp::schnorr::Signature::from_byte_array(*sig),
+            _ => return Err(SchnorrSigError::InvalidSchnorrSig),
+        };
         Ok(SchnorrSig { sig, hash_ty })
     }
 

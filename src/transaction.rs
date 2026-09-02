@@ -283,7 +283,7 @@ impl Sequence {
     /// Will return an error if the input cannot be encoded in 16 bits.
     #[inline]
     pub fn from_seconds_ceil(seconds: u32) -> Result<Self, RelativeLockTimeError> {
-        if let Ok(interval) = u16::try_from((seconds + 511) / 512) {
+        if let Ok(interval) = u16::try_from(seconds.div_ceil(512)) {
             Ok(Sequence::from_512_second_intervals(interval))
         } else {
             Err(RelativeLockTimeError::IntegerOverflow(seconds))
@@ -435,13 +435,13 @@ impl<'tx> PeginData<'tx> {
         pegin_witness: &'tx [Vec<u8>],
         prevout: bitcoin::OutPoint,
     ) -> Result<PeginData<'tx>, &'static str> {
-        let pegin_witness = match <&[Vec<u8>; 6]>::try_from(pegin_witness) {
-            Ok(v) => v,
-            Err(_) => return Err("size not 6"),
+        let Ok(pegin_witness) = <&[Vec<u8>; 6]>::try_from(pegin_witness) else {
+            return Err("size not 6");
         };
-        let (block_header, _) = match SliceExt::split_first_chunk::<80>(pegin_witness[5].as_slice()) {
-            Some(v) => v,
-            None => return Err("merkle proof too short"),
+        let Some((block_header, _)) =
+            SliceExt::split_first_chunk::<80>(pegin_witness[5].as_slice())
+        else {
+            return Err("merkle proof too short");
         };
 
         Ok(PeginData {
@@ -931,7 +931,7 @@ impl Transaction {
     #[inline]
     pub fn vsize(&self) -> usize {
         let weight = self.weight();
-        (weight + 4 - 1) / 4
+        weight.div_ceil(4)
     }
 
     /// Get the "discount weight" of this transaction; this is the weight minus the output witnesses and minus the
@@ -959,7 +959,7 @@ impl Transaction {
     ///
     /// Will be `ceil(discount weight / 4.0)`.
     pub fn discount_vsize(&self) -> usize {
-        (self.discount_weight() + 4 - 1) / 4
+        self.discount_weight().div_ceil(4)
     }
 
     fn scaled_size(&self, scale_factor: usize) -> usize {

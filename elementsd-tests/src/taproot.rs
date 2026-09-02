@@ -6,7 +6,7 @@ extern crate rand;
 use crate::{Call, setup};
 
 use bitcoin::key::{XOnlyPublicKey, Keypair};
-use bitcoin::Amount;
+use elementsd::bitcoincore_rpc::bitcoin::Amount;
 use elements::hex::FromHex;
 use elements::confidential::{AssetBlindingFactor, ValueBlindingFactor};
 use elements::encode::{deserialize, serialize_hex};
@@ -22,17 +22,14 @@ use elements::{
 };
 use elements::{AddressParams, Transaction, TxIn, TxOutSecrets};
 use elementsd::ElementsD;
-use rand::{rngs, thread_rng};
+use rand::{rngs, rng};
 use secp256k1_zkp::Secp256k1;
 use std::str::FromStr;
 
 static PARAMS: AddressParams = AddressParams::ELEMENTS;
 
-fn gen_keypair(
-    secp: &secp256k1_zkp::Secp256k1<secp256k1_zkp::All>,
-    rng: &mut rngs::ThreadRng,
-) -> (XOnlyPublicKey, Keypair) {
-    let keypair = Keypair::new(secp, rng);
+fn gen_keypair(rng: &mut rngs::ThreadRng) -> (XOnlyPublicKey, Keypair) {
+    let keypair = Keypair::new(rng);
     let (pk, _) = XOnlyPublicKey::from_keypair(&keypair);
     (pk, keypair)
 }
@@ -63,24 +60,24 @@ fn funded_tap_txout(
     let leaf1_script_builder = Builder::new();
     let leaf2_script_builder = Builder::new();
 
-    let (leaf1_pk, leaf1_keypair) = gen_keypair(secp, &mut thread_rng());
-    let (leaf2_pk, _leaf2_keypair) = gen_keypair(secp, &mut thread_rng());
-    let (internal_pk, internal_keypair) = gen_keypair(secp, &mut thread_rng());
+    let (leaf1_pk, leaf1_keypair) = gen_keypair(&mut rng());
+    let (leaf2_pk, _leaf2_keypair) = gen_keypair(&mut rng());
+    let (internal_pk, internal_keypair) = gen_keypair(&mut rng());
 
     let (blind_sk, blind_pk) = if blind {
-        let sk = secp256k1_zkp::SecretKey::new(&mut thread_rng());
-        let pk = secp256k1_zkp::PublicKey::from_secret_key(secp, &sk);
+        let sk = secp256k1_zkp::SecretKey::new(&mut rng());
+        let pk = secp256k1_zkp::PublicKey::from_secret_key(&sk);
         (Some(sk), Some(pk))
     } else {
         (None, None)
     };
 
     let leaf1_script = leaf1_script_builder
-        .push_slice(&leaf1_pk.serialize())
+        .push_slice(&leaf1_pk.to_byte_array())
         .push_opcode(opcodes::all::OP_CHECKSIG)
         .into_script();
     let leaf2_script = leaf2_script_builder
-        .push_slice(&leaf2_pk.serialize())
+        .push_slice(&leaf2_pk.to_byte_array())
         .push_opcode(opcodes::all::OP_CHECKSIG)
         .into_script();
     #[rustfmt::skip]
@@ -181,11 +178,11 @@ fn taproot_spend_test(
 
     if blind_tx {
         // set the nNonce as some confidential key to mark the output for blinding
-        let sk = secp256k1_zkp::SecretKey::new(&mut thread_rng());
-        let pk = secp256k1_zkp::PublicKey::from_secret_key(secp, &sk);
+        let sk = secp256k1_zkp::SecretKey::new(&mut rng());
+        let pk = secp256k1_zkp::PublicKey::from_secret_key(&sk);
         tx.output[0].nonce = confidential::Nonce::Confidential(pk);
         tx.blind(
-            &mut thread_rng(),
+            &mut rng(),
             secp,
             &[test_data.txout_secrets],
             false
@@ -214,9 +211,9 @@ fn taproot_spend_test(
             test_data.spend_info.merkle_root(),
         );
         let tweak = secp256k1_zkp::Scalar::from_be_bytes(tweak.to_byte_array()).expect("hash value greater than curve order");
-        let sig = secp.sign_schnorr(
-            &secp256k1_zkp::Message::from_digest_slice(&sighash_msg[..]).unwrap(),
-            &output_keypair.add_xonly_tweak(secp, &tweak).unwrap(),
+        let sig = secp256k1_zkp::schnorr::sign(
+            &sighash_msg[..],
+            &output_keypair.add_xonly_tweak(&tweak).unwrap(),
         );
 
         let schnorr_sig = SchnorrSig {
@@ -238,8 +235,8 @@ fn taproot_spend_test(
             )
             .unwrap();
 
-        let sig = secp.sign_schnorr(
-            &secp256k1_zkp::Message::from_digest_slice(&sighash_msg[..]).unwrap(),
+        let sig = secp256k1_zkp::schnorr::sign(
+            &sighash_msg[..],
             &test_data.leaf1_keypair,
         );
 

@@ -275,12 +275,12 @@ impl Script {
     /// script tree merkle root.
     pub fn new_v1_p2tr<C: Verification>(secp: &Secp256k1<C>, internal_key: UntweakedPublicKey, merkle_root: Option<TapNodeHash>) -> Script {
         let (output_key, _) = internal_key.tap_tweak(secp, merkle_root);
-        Script::new_witness_program(bech32::Fe32::P, &output_key.as_inner().serialize())
+        Script::new_witness_program(bech32::Fe32::P, &output_key.as_inner().to_byte_array())
     }
 
     /// Generates P2TR for key spending path for a known [`TweakedPublicKey`].
     pub fn new_v1_p2tr_tweaked(output_key: TweakedPublicKey) -> Script {
-        Script::new_witness_program(bech32::Fe32::P, &output_key.as_inner().serialize())
+        Script::new_witness_program(bech32::Fe32::P, &output_key.as_inner().to_byte_array())
     }
 
 

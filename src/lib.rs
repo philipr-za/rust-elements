@@ -77,6 +77,9 @@ mod internals;
 
 // re-export bitcoin deps which we re-use
 pub use bitcoin::hashes;
+// `secp256k1_zkp` no longer re-exports the upstream error type, so reach it through `bitcoin`,
+// which guarantees we name the same `secp256k1` crate instance that the zkp crate uses.
+pub use bitcoin::secp256k1;
 // export everything at the top level so it can be used as `elements::Transaction` etc.
 pub use crate::address::{Address, AddressError, AddressParams};
 pub use crate::blind::{

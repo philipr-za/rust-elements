@@ -176,9 +176,8 @@ impl Serialize for KeySource {
 
 impl Deserialize for KeySource {
     fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        let (prefix, mut rest) = match SliceExt::split_first_chunk::<4>(bytes) {
-            Some(v) => v,
-            None => return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into()),
+        let Some((prefix, mut rest)) = SliceExt::split_first_chunk::<4>(bytes) else {
+            return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
         };
 
         let fprint: Fingerprint = Fingerprint::from(prefix);
@@ -314,14 +313,17 @@ impl Deserialize for Box<SurjectionProof> {
 // Taproot related ser/deser
 impl Serialize for XOnlyPublicKey {
     fn serialize(&self) -> Vec<u8> {
-        XOnlyPublicKey::serialize(self).to_vec()
+        XOnlyPublicKey::to_byte_array(self).to_vec()
     }
 }
 
 impl Deserialize for XOnlyPublicKey {
     fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
-        XOnlyPublicKey::from_slice(bytes)
-            .map_err(|_| encode::Error::ParseFailed("Invalid xonly public key"))
+        let err = || encode::Error::ParseFailed("Invalid xonly public key");
+        match SliceExt::split_first_chunk::<32>(bytes) {
+            Some((key, [])) => XOnlyPublicKey::from_byte_array(*key).map_err(|_| err()),
+            _ => Err(err()),
+        }
     }
 }
 
@@ -335,15 +337,17 @@ impl Deserialize for schnorr::SchnorrSig {
     fn deserialize(bytes: &[u8]) -> Result<Self, encode::Error> {
         match bytes.len() {
             65 => {
-                let hash_ty = SchnorrSighashType::from_u8(bytes[64])
+                let (sig, rest) = SliceExt::split_first_chunk::<64>(bytes)
+                    .expect("slice is 65 bytes long");
+                let hash_ty = SchnorrSighashType::from_u8(rest[0])
                     .ok_or(encode::Error::ParseFailed("Invalid Sighash type"))?;
-                let sig = secp256k1_zkp::schnorr::Signature::from_slice(&bytes[..64])
-                    .map_err(|_| encode::Error::ParseFailed("Invalid Schnorr signature"))?;
+                let sig = secp256k1_zkp::schnorr::Signature::from_byte_array(*sig);
                 Ok(schnorr::SchnorrSig { sig, hash_ty })
             }
             64 => {
-                let sig = secp256k1_zkp::schnorr::Signature::from_slice(&bytes[..64])
-                    .map_err(|_| encode::Error::ParseFailed("Invalid Schnorr signature"))?;
+                let (sig, _) = SliceExt::split_first_chunk::<64>(bytes)
+                    .expect("slice is 64 bytes long");
+                let sig = secp256k1_zkp::schnorr::Signature::from_byte_array(*sig);
                 Ok(schnorr::SchnorrSig {
                     sig,
                     hash_ty: SchnorrSighashType::Default,
@@ -356,7 +360,7 @@ impl Deserialize for schnorr::SchnorrSig {
 
 impl Serialize for (XOnlyPublicKey, TapLeafHash) {
     fn serialize(&self) -> Vec<u8> {
-        let ser_pk = self.0.serialize();
+        let ser_pk = self.0.to_byte_array();
         let mut buf = Vec::with_capacity(ser_pk.len() + TapLeafHash::LEN);
         buf.extend(&ser_pk);
         buf.extend(&self.1.to_byte_array());

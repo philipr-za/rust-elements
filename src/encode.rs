@@ -49,7 +49,7 @@ pub enum Error {
     /// Invalid prefix for the confidential type.
     InvalidConfidentialPrefix(u8),
     /// Parsing within libsecp256k1 failed
-    Secp256k1(secp256k1_zkp::UpstreamError),
+    Secp256k1(crate::secp256k1::Error),
     /// Parsing within libsecp256k1-zkp failed
     Secp256k1zkp(secp256k1_zkp::Error),
     /// Pset related Errors
@@ -120,8 +120,8 @@ impl From<pset::Error> for Error {
 }
 
 #[doc(hidden)]
-impl From<secp256k1_zkp::UpstreamError> for Error {
-    fn from(e: secp256k1_zkp::UpstreamError) -> Self {
+impl From<crate::secp256k1::Error> for Error {
+    fn from(e: crate::secp256k1::Error) -> Self {
         Error::Secp256k1(e)
     }
 }
