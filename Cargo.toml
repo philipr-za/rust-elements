@@ -28,7 +28,8 @@ base64 = ["bitcoin/base64"]
 bech32 = "0.11.0"
 # Fork that point at rust-secp256k1 v0.33.1
 bitcoin = { git = "https://github.com/Blockstream/rust-bitcoin.git", branch = "use-secp256k1-0.33.1" }
-secp256k1-zkp = { git = "https://github.com/Blockstream/rust-secp256k1-zkp.git", branch = "use-secp256k1-0.33.1", features = ["global-context", "hashes"] }
+#secp256k1-zkp = { git = "https://github.com/Blockstream/rust-secp256k1-zkp.git", branch = "use-secp256k1-0.33.1", features = ["global-context", "hashes"] }
+secp256k1-zkp = { git = "https://github.com/philipr-za/rust-secp256k1-zkp.git", branch = "use-secp256k1-0.33.1", features = ["global-context", "hashes"] }
 
 # Used for ContractHash::from_json_contract.
 serde_json = { version = "1.0", optional = true }
